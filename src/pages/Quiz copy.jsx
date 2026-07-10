@@ -5,27 +5,20 @@ import Select from "react-select";
 import questions from "../data/questions";
 import confetti from "canvas-confetti";
 
-// ==================== Google Apps Script URL ====================
-const GOOGLE_SHEET_WEB_APP_URL =
-    "https://script.google.com/macros/s/AKfycbyDFNCuI-TwiJi1_xQn5w-QTAHDEu9pAJ-AzJK-GT4AsxbA4wpM1-DYOoD-qg2ZrJra/exec";
 
-// ==================== ส่งข้อมูลไป Google Sheet ====================
-const sendToGoogleSheet = async (data) => {
-    try {
-        const formData = new URLSearchParams();
-        Object.keys(data).forEach(key => formData.append(key, data[key]));
+const sendToSupabase = async (data) => {
+    const { error } = await supabase
+        .from("quiz_results")
+        .insert([data]);
 
-        const response = await fetch(GOOGLE_SHEET_WEB_APP_URL, {
-            method: "POST",
-            body: formData
-        });
-
-        return await response.json();
-    } catch (error) {
+    if (error) {
         console.error(error);
         throw error;
     }
+
+    return true;
 };
+
 
 // ฟังก์ชันยิงพลุ
 const fireConfetti = () => {
@@ -167,17 +160,14 @@ export default function Quiz() {
         const finalScore = Math.round((score / 9) * 10);
 
         const attemptData = {
-            employeeId: userInfo.employeeId,
-            fullName: userInfo.fullName,
-            department: userInfo.department,
-            score: finalScore,
-            time: timeTaken,
-            date: new Date().toISOString().slice(0, 19).replace("T", " "),
+            employee_id: userInfo.employeeId,
+            score: pendingResult.score,
+            time: pendingResult.timeTaken,
             comment: comment.trim(),
         };
 
         try {
-            const resultFromSheet = await sendToGoogleSheet(attemptData);
+            const resultFromSheet = await sendToSupabase(attemptData);
 
             const existingAttempts = JSON.parse(localStorage.getItem("attempts")) || [];
             localStorage.setItem("attempts", JSON.stringify([...existingAttempts, attemptData]));

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import multiavatar from "@multiavatar/multiavatar/esm";
+import { supabase } from "../lib/supabase";
 
 export default function PodiumLeaderboard() {
     const [allAttempts, setAllAttempts] = useState([]);
@@ -19,30 +20,45 @@ export default function PodiumLeaderboard() {
         return new Date(dateStr.replace(" ", "T")).getTime();
     };
 
-    // ==================== ดึงข้อมูลจาก Google Sheet ====================
     const fetchData = async (isManualRefresh = false) => {
         if (isManualRefresh) setIsRefreshing(true);
 
         try {
-            const res = await fetch("https://script.google.com/macros/s/AKfycbwU5MCDvBdNGrMef9IJV5DzTdrCgeIotnlO4ElKwzSLANjl45hZBJ9t77W0f6XvZniG/exec");
-            const data = await res.json();
+            const { data, error } = await supabase
+                .from("quiz_results")
+                .select("*");
 
-            setAllAttempts(data);
+            if (error) throw error;
 
-            // Deduplicate
+            // แปลงชื่อ field ให้เหมือนโค้ดเดิม
+            const mapped = data.map(item => ({
+                employeeId: item.employee_id,
+                score: item.score,
+                time: item.time,
+                comment: item.comment,
+                date: item.created_at,
+            }));
+
+            setAllAttempts(mapped);
+
             const bestMap = {};
-            data.forEach(item => {
+
+            mapped.forEach(item => {
                 const id = item.employeeId;
+
                 if (!bestMap[id]) {
                     bestMap[id] = item;
                 } else {
                     const current = bestMap[id];
+
                     const isBetter =
                         item.score > current.score ||
-                        (item.score === current.score && item.time < current.time) ||
+                        (item.score === current.score &&
+                            item.time < current.time) ||
                         (item.score === current.score &&
                             item.time === current.time &&
-                            parseDateTime(item.date) < parseDateTime(current.date));
+                            parseDateTime(item.date) <
+                            parseDateTime(current.date));
 
                     if (isBetter) {
                         bestMap[id] = item;
@@ -52,16 +68,14 @@ export default function PodiumLeaderboard() {
 
             const sorted = Object.values(bestMap).sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score;
-
-                if (a.time !== b.time)
-                    return a.time - b.time;
-
+                if (a.time !== b.time) return a.time - b.time;
                 return parseDateTime(a.date) - parseDateTime(b.date);
             });
 
             setLeaderboard(sorted);
+
         } catch (error) {
-            console.error("โหลดข้อมูลจาก Google Sheet ล้มเหลว:", error);
+            console.error(error);
         } finally {
             setLoading(false);
             if (isManualRefresh) setIsRefreshing(false);
@@ -487,14 +501,7 @@ export default function PodiumLeaderboard() {
                     <h3 className="text-xl font-bold flex items-center gap-2">⚔️ Other Rankings</h3>
 
                     <div className="flex items-center gap-3">
-                        {/* <button
-                            onClick={() => fetchData(true)}
-                            disabled={isRefreshing}
-                            className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-white/10 hover:bg-white/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all"
-                        >
-                            <span className={isRefreshing ? "inline-block animate-spin" : ""}>🔄</span>
-                            {isRefreshing ? "กำลังรีเฟรช..." : "รีเฟรชข้อมูล"}
-                        </button> */}
+
 
                         <div className="relative w-full md:w-72">
                             <input

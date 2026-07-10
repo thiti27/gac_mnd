@@ -4,27 +4,19 @@ import * as Yup from "yup";
 import Select from "react-select";
 import questions from "../data/questions";
 import confetti from "canvas-confetti";
+import { supabase } from "../lib/supabase";
 
-// ==================== Google Apps Script URL ====================
-const GOOGLE_SHEET_WEB_APP_URL =
-    "https://script.google.com/macros/s/AKfycbwU5MCDvBdNGrMef9IJV5DzTdrCgeIotnlO4ElKwzSLANjl45hZBJ9t77W0f6XvZniG/exec";
+const sendToSupabase = async (data) => {
+    const { error } = await supabase
+        .from("quiz_results")
+        .insert([data]);
 
-// ==================== ส่งข้อมูลไป Google Sheet ====================
-const sendToGoogleSheet = async (data) => {
-    try {
-        const formData = new URLSearchParams();
-        Object.keys(data).forEach(key => formData.append(key, data[key]));
-
-        const response = await fetch(GOOGLE_SHEET_WEB_APP_URL, {
-            method: "POST",
-            body: formData
-        });
-
-        return await response.json();
-    } catch (error) {
+    if (error) {
         console.error(error);
         throw error;
     }
+
+    return true;
 };
 
 // ฟังก์ชันยิงพลุ
@@ -211,16 +203,14 @@ export default function Quiz() {
         setIsLoading(true);
 
         const attemptData = {
-            employeeId: userInfo.employeeId,
-            fullName: userInfo.fullName,
-            department: userInfo.department,
+            employee_id: userInfo.employeeId,
             score: pendingResult.score,
             time: pendingResult.timeTaken,
             comment: comment.trim(),
         };
 
         try {
-            await sendToGoogleSheet(attemptData);
+            const resultFromSheet = await sendToSupabase(attemptData);
 
             // บันทึก localStorage หลัง Save Google Sheet สำเร็จเท่านั้น
             const existingAttempts = JSON.parse(localStorage.getItem("attempts")) || [];
