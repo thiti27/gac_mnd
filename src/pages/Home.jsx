@@ -14,12 +14,17 @@ export default function PodiumLeaderboard() {
     const firstPageSize = 17;
     const normalPageSize = 20;
 
+    const parseDateTime = (dateStr) => {
+        if (!dateStr) return 0;
+        return new Date(dateStr.replace(" ", "T")).getTime();
+    };
+
     // ==================== ดึงข้อมูลจาก Google Sheet ====================
     const fetchData = async (isManualRefresh = false) => {
         if (isManualRefresh) setIsRefreshing(true);
 
         try {
-            const res = await fetch("https://script.google.com/macros/s/AKfycbyDFNCuI-TwiJi1_xQn5w-QTAHDEu9pAJ-AzJK-GT4AsxbA4wpM1-DYOoD-qg2ZrJra/exec");
+            const res = await fetch("https://script.google.com/macros/s/AKfycbwU5MCDvBdNGrMef9IJV5DzTdrCgeIotnlO4ElKwzSLANjl45hZBJ9t77W0f6XvZniG/exec");
             const data = await res.json();
 
             setAllAttempts(data);
@@ -35,16 +40,23 @@ export default function PodiumLeaderboard() {
                     const isBetter =
                         item.score > current.score ||
                         (item.score === current.score && item.time < current.time) ||
-                        (item.score === current.score && item.time === current.time && new Date(item.date) < new Date(current.date));
+                        (item.score === current.score &&
+                            item.time === current.time &&
+                            parseDateTime(item.date) < parseDateTime(current.date));
 
-                    if (isBetter) bestMap[id] = item;
+                    if (isBetter) {
+                        bestMap[id] = item;
+                    }
                 }
             });
 
             const sorted = Object.values(bestMap).sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score;
-                if (b.time !== a.time) return a.time - b.time;
-                return new Date(a.date) - new Date(b.date);
+
+                if (a.time !== b.time)
+                    return a.time - b.time;
+
+                return parseDateTime(a.date) - parseDateTime(b.date);
             });
 
             setLeaderboard(sorted);
@@ -87,7 +99,7 @@ export default function PodiumLeaderboard() {
     const employeeHistory = searchedEmployeeId
         ? allAttempts
             .filter(p => String(p.employeeId || '').toLowerCase() === searchLower)
-            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .sort((a, b) => parseDateTime(b.date) - parseDateTime(a.date))
         : [];
 
     const filteredOthers = searchTerm.trim()
@@ -128,9 +140,18 @@ export default function PodiumLeaderboard() {
 
     const formatDate = (dateStr) => {
         if (!dateStr) return "-";
-        const d = new Date(dateStr);
-        return d.toLocaleDateString("th-TH", {
-            day: "numeric", month: "short", year: "numeric"
+
+        const d = new Date(dateStr.replace(" ", "T"));
+
+        return d.toLocaleString("th-TH", {
+            timeZone: "Asia/Bangkok",
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
         });
     };
 

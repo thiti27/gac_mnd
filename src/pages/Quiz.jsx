@@ -7,7 +7,7 @@ import confetti from "canvas-confetti";
 
 // ==================== Google Apps Script URL ====================
 const GOOGLE_SHEET_WEB_APP_URL =
-    "https://script.google.com/macros/s/AKfycbyDFNCuI-TwiJi1_xQn5w-QTAHDEu9pAJ-AzJK-GT4AsxbA4wpM1-DYOoD-qg2ZrJra/exec";
+    "https://script.google.com/macros/s/AKfycbwU5MCDvBdNGrMef9IJV5DzTdrCgeIotnlO4ElKwzSLANjl45hZBJ9t77W0f6XvZniG/exec";
 
 // ==================== ส่งข้อมูลไป Google Sheet ====================
 const sendToGoogleSheet = async (data) => {
@@ -216,7 +216,6 @@ export default function Quiz() {
             department: userInfo.department,
             score: pendingResult.score,
             time: pendingResult.timeTaken,
-            date: new Date().toISOString().slice(0, 19).replace("T", " "),
             comment: comment.trim(),
         };
 
