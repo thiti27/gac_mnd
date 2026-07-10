@@ -487,14 +487,14 @@ export default function PodiumLeaderboard() {
                     <h3 className="text-xl font-bold flex items-center gap-2">⚔️ Other Rankings</h3>
 
                     <div className="flex items-center gap-3">
-                        <button
+                        {/* <button
                             onClick={() => fetchData(true)}
                             disabled={isRefreshing}
                             className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-white/10 hover:bg-white/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all"
                         >
                             <span className={isRefreshing ? "inline-block animate-spin" : ""}>🔄</span>
                             {isRefreshing ? "กำลังรีเฟรช..." : "รีเฟรชข้อมูล"}
-                        </button>
+                        </button> */}
 
                         <div className="relative w-full md:w-72">
                             <input
