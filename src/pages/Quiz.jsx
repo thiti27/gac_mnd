@@ -58,6 +58,17 @@ const departmentOptions = [
     { value: "Planning", label: "Planning" },
 ];
 
+function shuffleArray(array) {
+    const newArray = [...array];
+
+    for (let i = newArray.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+
+    return newArray;
+}
+const choiceLabels = ["ก", "ข", "ค", "ง"];
 export default function Quiz() {
     const [userInfo, setUserInfo] = useState(null);
     const [answers, setAnswers] = useState({});
@@ -79,7 +90,16 @@ export default function Quiz() {
     const timerRef = useRef(null);
 
     // คำถามที่ใช้คิดคะแนน (ไม่รวม comment) — หน้า Comment แยกออกมาต่างหากแล้ว
-    const quizQuestions = useMemo(() => questions.filter(q => q.type !== "comment"), []);
+    const quizQuestions = useMemo(() => {
+        return shuffleArray(
+            questions
+                .filter(q => q.type !== "comment")
+                .map(q => ({
+                    ...q,
+                    options: shuffleArray(q.options),
+                }))
+        );
+    }, []);
     const totalQuestions = quizQuestions.length;
 
     const validationSchema = Yup.object({
@@ -319,32 +339,79 @@ export default function Quiz() {
                 <p className="text-center text-white/60 mb-8">แบบทดสอบ M&D and Compliance</p>
 
                 {/* กติกา — แสดงเฉพาะก่อนเริ่ม */}
+                {/* กติกา */}
                 {!isStarted && (
-                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 md:p-8 mb-6 anim-fade-up">
-                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                            <span>📋</span> กติกาการทำแบบทดสอบ
+                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 md:p-8 mb-6 backdrop-blur-sm anim-fade-up">
+                        <h2 className="text-2xl font-bold flex items-center gap-2 mb-6">
+                            📋 กติกาการทำแบบทดสอบ
                         </h2>
-                        <ul className="space-y-2.5 text-white/80 text-sm md:text-base">
-                            <li className="flex items-start gap-2">
-                                <span className="text-yellow-400 mt-1">•</span>
-                                แบบทดสอบมีทั้งหมด <span className="font-semibold text-white">10 ข้อ</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                                <span className="text-yellow-400 mt-1">•</span>
-                                ต้องตอบให้<strong className="text-white">ถูกครบ 10 ข้อ</strong> จึงจะผ่าน
-                            </li>
-                            <li className="flex items-start gap-2">
-                                <span className="text-yellow-400 mt-1">•</span>
-                                หากทำครั้งแรกไม่ถึง 10 ข้อ <strong className="text-emerald-400">สามารถทำใหม่ได้</strong> ไม่จำกัดจำนวนครั้ง
-                            </li>
-                        </ul>
+
+                        <div className="space-y-3 text-white/80">
+                            <div className="flex items-center gap-3">
+                                <span className="text-lg">📝</span>
+                                <span>
+                                    แบบทดสอบ <span className="font-bold text-yellow-400">10 ข้อ</span> (ข้อละ <span className="font-bold text-yellow-400">1 คะแนน</span>)
+                                </span>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <span className="text-lg">✅</span>
+                                <span>
+                                    ต้องตอบถูก <span className="font-bold text-emerald-400">ครบ 10 ข้อ (10/10)</span> จึงจะผ่าน
+                                </span>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <span className="text-lg">🔄</span>
+                                <span>
+                                    ทำแบบทดสอบใหม่ได้ <span className="font-bold text-sky-400">ไม่จำกัดจำนวนครั้ง</span>
+
+                                </span>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <span className="text-lg">⏱️</span>
+                                <span>จับเวลาเฉพาะการทำข้อสอบ <span className="font-semibold text-white">ไม่นับเวลาแสดงความคิดเห็น</span></span>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 pt-5 border-t border-white/10">
+                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                                <span className="font-semibold text-white">🏆 การจัดอันดับ</span>
+
+                                <span className="px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300">
+                                    ตอบถูกครบ 10 ข้อ
+                                </span>
+
+                                <span className="text-white/40">→</span>
+
+                                <span className="px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-300">
+                                    เวลาน้อยที่สุด
+                                </span>
+
+                                <span className="text-white/40">→</span>
+
+                                <span className="px-3 py-1 rounded-full bg-white/10 text-white/80">
+                                    ส่งก่อน
+                                </span>
+                            </div>
+
+                            <p className="mt-3 text-sm text-white/60">
+                                * หากทำแบบทดสอบหลายครั้ง ระบบจะเลือกผลการทดสอบที่ดีที่สุดในการจัดอันดับ
+                            </p>
+                        </div>
                     </div>
                 )}
 
                 {/* ฟอร์มข้อมูลพนักงาน */}
                 {!isStarted && (
-                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 md:p-8 anim-fade-up" style={{ animationDelay: "0.1s" }}>
-                        <h2 className="text-xl font-bold mb-4">กรอกข้อมูลพนักงาน</h2>
+                    <div
+                        className="bg-white/5 border border-white/10 rounded-3xl p-6 md:p-8 backdrop-blur-sm anim-fade-up"
+                        style={{ animationDelay: "0.1s" }}
+                    >
+                        <h2 className="text-2xl font-bold mb-5 flex items-center gap-2">
+                            👤 กรอกข้อมูลพนักงาน
+                        </h2>
 
                         <Formik
                             initialValues={initialUserInfo}
@@ -352,17 +419,40 @@ export default function Quiz() {
                             onSubmit={handleStartQuiz}
                             enableReinitialize
                         >
-                            {({ setFieldValue, values, errors, touched }) => (
+                            {({ errors, touched }) => (
                                 <Form>
-                                    <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-                                        <div>
-                                            <label className="block text-sm text-white/70 mb-1">รหัสพนักงาน *</label>
-                                            <Field name="employeeId" className={`w-full bg-white/10 border rounded-2xl px-4 py-3 focus:outline-none focus:border-yellow-400 focus:shadow-[0_0_20px_rgba(250,204,21,0.25)] transition-all ${errors.employeeId && touched.employeeId ? "border-red-500" : "border-white/20"}`} placeholder="เช่น 20000" />
-                                            <ErrorMessage name="employeeId" component="div" className="text-red-400 text-sm mt-1" />
-                                        </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-white/80 mb-2">
+                                            รหัสพนักงาน <span className="text-red-400">*</span>
+                                        </label>
+
+                                        <Field
+                                            name="employeeId"
+                                            placeholder="เช่น 20014"
+                                            className={`w-full rounded-2xl bg-white/10 border px-4 py-3 text-white placeholder:text-white/40 transition-all focus:outline-none focus:ring-2 focus:ring-yellow-400/30 focus:border-yellow-400 ${errors.employeeId && touched.employeeId
+                                                ? "border-red-500"
+                                                : "border-white/20"
+                                                }`}
+                                        />
+
+                                        <ErrorMessage
+                                            name="employeeId"
+                                            component="div"
+                                            className="text-red-400 text-sm mt-2"
+                                        />
+
+                                        <p className="mt-3 text-sm text-white/60">
+                                            ⚠️ โปรดตรวจสอบ
+                                            <span className="font-semibold text-yellow-300"> รหัสพนักงาน </span>
+                                            ให้ถูกต้อง เพื่อใช้ในการ
+                                            <span className="font-semibold text-white"> บันทึกผลการทดสอบและจัดอันดับ</span>
+                                        </p>
                                     </div>
 
-                                    <button type="submit" className="mt-6 w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-3.5 rounded-2xl transition-all hover:scale-[1.02] anim-glow">
+                                    <button
+                                        type="submit"
+                                        className="mt-8 w-full rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-3.5 transition-all duration-300 hover:scale-[1.02] shadow-lg shadow-yellow-500/20"
+                                    >
                                         🚀 เริ่มทำแบบทดสอบ
                                     </button>
                                 </Form>
@@ -370,7 +460,6 @@ export default function Quiz() {
                         </Formik>
                     </div>
                 )}
-
                 {/* ===== แบบทดสอบ (ข้อ 1-10) ===== */}
                 {isStarted && !isSubmitted && !showComment && (
                     <div className="space-y-8">
@@ -414,13 +503,29 @@ export default function Quiz() {
                                 </div>
 
                                 <div className="space-y-3">
-                                    {q.options.map((option) => (
-                                        <label key={option.id} className={`flex items-center gap-3 p-4 rounded-2xl cursor-pointer border transition-all duration-200
-                                            ${answers[q.id] === option.id
-                                                ? "bg-yellow-400/15 border-yellow-400 scale-[1.01] shadow-[0_0_15px_rgba(250,204,21,0.15)]"
-                                                : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/30 hover:translate-x-1"}`}>
-                                            <input type="radio" checked={answers[q.id] === option.id} onChange={() => handleAnswer(q.id, option.id)} className="accent-yellow-400" />
-                                            <span>{option.text}</span>
+                                    {q.options.map((option, index) => (
+                                        <label
+                                            key={option.id}
+                                            className={`flex items-center gap-4 p-4 rounded-2xl cursor-pointer border transition-all duration-200
+        ${answers[q.id] === option.id
+                                                    ? "bg-yellow-400/15 border-yellow-400 scale-[1.01] shadow-[0_0_15px_rgba(250,204,21,0.15)]"
+                                                    : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/30 hover:translate-x-1"
+                                                }`}
+                                        >
+                                            <input
+                                                type="radio"
+                                                checked={answers[q.id] === option.id}
+                                                onChange={() => handleAnswer(q.id, option.id)}
+                                                className="accent-yellow-400"
+                                            />
+
+                                            <div className="flex items-center gap-3">
+                                                <span className="flex items-center justify-center w-8 h-8 rounded-full bg-white/10 text-yellow-300 font-bold">
+                                                    {choiceLabels[index]}
+                                                </span>
+
+                                                <span>{option.text}</span>
+                                            </div>
                                         </label>
                                     ))}
                                 </div>
@@ -448,7 +553,7 @@ export default function Quiz() {
                                 <div className="text-6xl mb-3 anim-bounce inline-block">💬</div>
                                 <h2 className="text-2xl md:text-3xl font-black mb-2">ก่อนดูผลคะแนน</h2>
                                 <p className="text-white/70">
-                                    ช่วยตอบอีก 1 คำถาม <span className="text-yellow-400">(ใช้เวลาประมาณ 10 วินาที)</span>
+                                    ช่วยตอบอีก 1 คำถาม <span className="text-yellow-400">(ไม่จับเวลา)</span>
                                 </p>
                                 <p className="text-emerald-400 text-sm mt-1">✨ ความคิดเห็นของคุณจะช่วยพัฒนาองค์กร</p>
                             </div>
