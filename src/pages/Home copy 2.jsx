@@ -116,30 +116,6 @@ export default function PodiumLeaderboard() {
         });
     };
 
-    // ==================== ป้ายสถานะ Pass / Not Pass ====================
-    const StatusBadge = ({ score, size = "md" }) => {
-        const isPass = score === 10;
-        const sizeClass = size === "sm"
-            ? "px-2 py-0.5 text-[10px] gap-1"
-            : "px-2.5 py-1 text-[11px] md:text-xs gap-1.5";
-
-        return isPass ? (
-            <span className={`inline-flex items-center ${sizeClass} rounded-full font-bold uppercase tracking-wide
-                bg-emerald-400/15 text-emerald-300 border border-emerald-400/40
-                shadow-[0_0_12px_rgba(16,185,129,0.25)]`}>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
-                Pass
-            </span>
-        ) : (
-            <span className={`inline-flex items-center ${sizeClass} rounded-full font-bold uppercase tracking-wide
-                bg-rose-500/10 text-rose-300 border border-rose-400/40`}
-                title="ยังไม่ผ่าน สามารถทำแบบทดสอบใหม่ได้">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                Not Pass
-            </span>
-        );
-    };
-
     // ==================== มงกุฎ SVG ====================
     const Crown = ({ className = "" }) => (
         <svg viewBox="0 0 64 44" className={className} fill="none">
@@ -489,24 +465,10 @@ export default function PodiumLeaderboard() {
                                     </span>
                                 </div>
                             </div>
-                            <div className="flex flex-col md:items-end gap-1.5">
-                                <StatusBadge score={Math.max(...employeeHistory.map(h => h.score))} />
-                                <div className="text-sm text-white/60">
-                                    ทั้งหมด <span className="font-bold text-white">{employeeHistory.length}</span> ครั้ง
-                                </div>
+                            <div className="text-sm text-white/60">
+                                ทั้งหมด <span className="font-bold text-white">{employeeHistory.length}</span> ครั้ง
                             </div>
                         </div>
-
-                        {/* แจ้งเตือนถ้ายังไม่ผ่าน */}
-                        {Math.max(...employeeHistory.map(h => h.score)) < 10 && (
-                            <div className="mb-4 flex items-center gap-3 bg-rose-500/10 border border-rose-400/30 rounded-2xl px-4 py-3 text-sm">
-                                <span className="text-xl">💪</span>
-                                <div>
-                                    <span className="text-rose-300 font-semibold">ยังไม่ผ่าน</span>
-                                    <span className="text-white/70"> — ต้องได้ 10/10 จึงจะผ่าน สามารถทำแบบทดสอบใหม่ได้ไม่จำกัดจำนวนครั้ง</span>
-                                </div>
-                            </div>
-                        )}
 
                         <div className="space-y-2">
                             {employeeHistory.map((item, index) => (
@@ -515,12 +477,10 @@ export default function PodiumLeaderboard() {
                                         <div className="bg-white/10 text-xs px-3 py-1 rounded-full font-mono w-fit">#{index + 1}</div>
                                         <div className="text-sm text-white/70">{formatDate(item.date)}</div>
                                     </div>
-                                    <div className="flex items-center gap-4 md:gap-6 font-mono text-sm md:text-base">
-                                        <StatusBadge score={item.score} size="sm" />
+                                    <div className="flex items-center gap-6 font-mono text-sm md:text-base">
                                         <div>
                                             {item.score === 10 && <span className="mr-1">⭐</span>}
-                                            <span className={`font-bold ${item.score === 10 ? "text-emerald-300" : "text-rose-300"}`}>{item.score}</span>
-                                            <span className="text-white/40">/10</span>
+                                            <span className="font-bold">{item.score}</span><span className="text-white/40">/10</span>
                                         </div>
                                         <div className="text-white/70">⏱ {item.time}s</div>
                                     </div>
@@ -536,17 +496,12 @@ export default function PodiumLeaderboard() {
                                     const originalIndex = leaderboard.findIndex(item => item.employeeId === p.employeeId);
                                     const rank = originalIndex + 1;
                                     const isTop10 = rank <= 10;
-                                    const isPass = p.score === 10;
 
                                     return (
                                         <div key={p.employeeId}
                                             className={`flex items-center justify-between backdrop-blur transition-all duration-300 rounded-2xl px-4 py-3 md:px-5 md:py-4 text-sm md:text-base
-                                                hover:scale-[1.02]
-                                                ${isPass
-                                                    ? "hover:shadow-[0_0_20px_rgba(16,185,129,0.25)] " + (isTop10
-                                                        ? "bg-gradient-to-r from-emerald-500/10 via-purple-500/10 to-white/5 border border-emerald-400/25 hover:bg-emerald-500/10"
-                                                        : "bg-white/5 border border-emerald-400/15 hover:bg-white/10")
-                                                    : "bg-white/[0.03] border border-rose-400/15 hover:bg-rose-500/[0.07] hover:shadow-[0_0_20px_rgba(244,63,94,0.15)]"}`}
+                                                hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(168,85,247,0.25)]
+                                                ${isTop10 ? "bg-gradient-to-r from-purple-500/15 to-white/5 border border-purple-400/20 hover:bg-purple-500/20" : "bg-white/5 hover:bg-white/10"}`}
                                             style={{
                                                 opacity: mounted ? 1 : 0,
                                                 transform: mounted ? "translateX(0)" : "translateX(-20px)",
@@ -557,31 +512,19 @@ export default function PodiumLeaderboard() {
                                             </div>
 
                                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                <div className={`w-9 h-9 md:w-11 md:h-11 rounded-full ring-2 flex items-center justify-center bg-gradient-to-br text-white font-bold text-lg md:text-xl flex-shrink-0
-                                                    ${isPass ? "ring-emerald-400/50 from-indigo-500 to-purple-600" : "ring-white/15 from-slate-500 to-slate-700"}`}>
+                                                <div className="w-9 h-9 md:w-11 md:h-11 rounded-full ring-2 ring-white/20 flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-lg md:text-xl flex-shrink-0">
                                                     {getInitial(p)}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <div className={`font-semibold truncate ${!isPass ? "text-white/80" : ""}`}>
+                                                    <div className="font-semibold truncate">
                                                         {p.employeeId}
                                                         {isTop10 && <span className="ml-1.5 text-xs">🔥</span>}
-                                                    </div>
-                                                    <div className="mt-0.5 flex items-center gap-2">
-                                                        <StatusBadge score={p.score} size="sm" />
-                                                        {!isPass && (
-                                                            <span className="hidden md:inline text-[10px] text-white/40">
-                                                                ทำแบบทดสอบใหม่เพื่อผ่าน 💪
-                                                            </span>
-                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
 
                                             <div className="flex items-center gap-4 md:gap-6 text-right">
-                                                <div>
-                                                    <span className={`font-bold ${isPass ? "text-emerald-300" : "text-rose-300"}`}>{p.score}</span>
-                                                    <span className="text-white/40">/10</span>
-                                                </div>
+                                                <div><span className="font-bold">{p.score}</span><span className="text-white/40">/10</span></div>
                                                 <div className="text-white/60 w-12 md:w-14 text-right">{p.time}s</div>
                                             </div>
 
