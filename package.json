@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@multiavatar/multiavatar": "^1.0.7",
     "@tailwindcss/vite": "^4.3.2",
     "canvas-confetti": "^1.9.4",
     "formik": "^2.4.9",

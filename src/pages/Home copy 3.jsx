@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import multiavatar from "@multiavatar/multiavatar/esm";
 
 export default function PodiumLeaderboard() {
     const [allAttempts, setAllAttempts] = useState([]);
@@ -107,24 +106,7 @@ export default function PodiumLeaderboard() {
     const startRank = currentPage === 1 ? 4 : 4 + firstPageSize + (currentPage - 2) * normalPageSize;
     const endRank = Math.min(startRank + currentPageSize - 1, leaderboard.length);
 
-    // ==================== Avatar การ์ตูน (multiavatar - generate ในเครื่อง ไม่พึ่ง API ภายนอก) ====================
-    // seed = employeeId → คนเดิมได้ตัวการ์ตูนตัวเดิมเสมอ ไม่เปลี่ยนตอนรีเฟรช
-    const avatarCache = useMemo(() => new Map(), []);
-
-    const getAvatarSvg = (player) => {
-        const seed = String(player.employeeId || "?");
-        if (!avatarCache.has(seed)) {
-            avatarCache.set(seed, multiavatar(seed));
-        }
-        return avatarCache.get(seed);
-    };
-
-    const Avatar3D = ({ player, className = "" }) => (
-        <div
-            className={`overflow-hidden [&>svg]:w-full [&>svg]:h-full ${className}`}
-            dangerouslySetInnerHTML={{ __html: getAvatarSvg(player) }}
-        />
-    );
+    const getInitial = (player) => player.fullName?.trim()?.[0] || "?";
 
     const formatDate = (dateStr) => {
         if (!dateStr) return "-";
@@ -241,12 +223,13 @@ export default function PodiumLeaderboard() {
                             }} />
                     )}
 
-                    <div className={`relative w-20 h-20 md:w-24 md:h-24 rounded-full ring-4 overflow-hidden
+                    <div className={`relative w-20 h-20 md:w-24 md:h-24 rounded-full ring-4 flex items-center justify-center
+                        bg-gradient-to-br ${t.avatar} text-white font-black text-4xl md:text-5xl
                         ${t.ring} ${t.glow} ${isFirst ? "animate-pulse-glow" : ""}`}>
-                        <Avatar3D player={player} className="w-full h-full rounded-full" />
+                        {getInitial(player)}
                         {/* ประกายวิ้งบนอวตาร */}
-                        <span className="absolute top-1 right-2 text-white/90 text-xs animate-twinkle pointer-events-none">✦</span>
-                        <span className="absolute bottom-2 left-1 text-white/70 text-[10px] animate-twinkle pointer-events-none" style={{ animationDelay: "0.7s" }}>✦</span>
+                        <span className="absolute top-1 right-2 text-white/90 text-xs animate-twinkle">✦</span>
+                        <span className="absolute bottom-2 left-1 text-white/70 text-[10px] animate-twinkle" style={{ animationDelay: "0.7s" }}>✦</span>
                     </div>
 
                     <div className={`absolute -top-1 -right-1 w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-lg ${t.badge} animate-badge-pop`}>
@@ -496,13 +479,8 @@ export default function PodiumLeaderboard() {
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
                             <div>
                                 <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-full ring-2 ring-yellow-400/60 overflow-hidden flex-shrink-0 shadow-[0_0_15px_rgba(250,204,21,0.3)]">
-                                        <Avatar3D player={{ employeeId: searchedEmployeeId }} className="w-full h-full rounded-full" />
-                                    </div>
-                                    <div>
-                                        <div className="text-yellow-400 font-bold text-sm md:text-base">📜 ประวัติการทำแบบทดสอบ</div>
-                                        <span className="font-mono text-2xl font-bold">{searchedEmployeeId}</span>
-                                    </div>
+                                    <span className="text-yellow-400 font-bold text-lg">📜 ประวัติการทำแบบทดสอบ</span>
+                                    <span className="font-mono text-2xl font-bold">{searchedEmployeeId}</span>
                                 </div>
                                 <div className="mt-1">
                                     <span className="text-sm text-white/60">ปัจจุบันอยู่อันดับ </span>
@@ -579,9 +557,9 @@ export default function PodiumLeaderboard() {
                                             </div>
 
                                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                <div className={`w-9 h-9 md:w-11 md:h-11 rounded-full ring-2 overflow-hidden flex-shrink-0
-                                                    ${isPass ? "ring-emerald-400/50" : "ring-white/15 grayscale-[35%] opacity-90"}`}>
-                                                    <Avatar3D player={p} className="w-full h-full rounded-full" />
+                                                <div className={`w-9 h-9 md:w-11 md:h-11 rounded-full ring-2 flex items-center justify-center bg-gradient-to-br text-white font-bold text-lg md:text-xl flex-shrink-0
+                                                    ${isPass ? "ring-emerald-400/50 from-indigo-500 to-purple-600" : "ring-white/15 from-slate-500 to-slate-700"}`}>
+                                                    {getInitial(p)}
                                                 </div>
                                                 <div className="min-w-0">
                                                     <div className={`font-semibold truncate ${!isPass ? "text-white/80" : ""}`}>
