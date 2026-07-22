@@ -5,19 +5,64 @@ import Select from "react-select";
 import questions from "../data/questions";
 import confetti from "canvas-confetti";
 import { supabase } from "../lib/supabase";
+const isBetter = (newData, oldData) => {
+    if (newData.score > oldData.score) return true;
+    if (newData.score === oldData.score && newData.time < oldData.time) return true;
+    return false;
+};
 
 const sendToSupabase = async (data) => {
-    const { error } = await supabase
+    // 1) หาผลเดิมที่ดีที่สุดของ employee_id นี้ (รองรับกรณีมีหลายแถว)
+    const { data: rows, error: fetchError } = await supabase
         .from("quiz_results")
-        .insert([data]);
+        .select("id, score, time")
+        .eq("employee_id", data.employee_id)
+        .order("score", { ascending: false })
+        .order("time", { ascending: true })
+        .limit(1);
 
-    if (error) {
-        console.error(error);
-        throw error;
+    if (fetchError) {
+        console.error(fetchError);
+        throw fetchError;
     }
 
+    const existing = rows?.[0] ?? null;
+
+    // 2) ไม่เคย save → insert ใหม่
+    if (!existing) {
+        const { error } = await supabase
+            .from("quiz_results")
+            .insert([data]);
+
+        if (error) {
+            console.error(error);
+            throw error;
+        }
+        return true;
+    }
+
+    // 3) เคย save → ถ้าผลใหม่ดีกว่า ให้ update ทับ id เดิม
+    if (isBetter(data, existing)) {
+        const { error } = await supabase
+            .from("quiz_results")
+            .update({
+                score: data.score,
+                time: data.time,
+                comment: data.comment,
+            })
+            .eq("id", existing.id);
+
+        if (error) {
+            console.error(error);
+            throw error;
+        }
+        return true;
+    }
+
+    // 4) ผลเดิมดีกว่า → ไม่แก้ไขอะไร
     return true;
 };
+
 
 // ฟังก์ชันยิงพลุ
 const fireConfetti = () => {
