@@ -102,7 +102,12 @@ export default function PodiumLeaderboard() {
             emoji: Math.random() > 0.7 ? ["✦", "✧", "⭐", "✨"][Math.floor(Math.random() * 4)] : null,
         })), []);
 
-    const top3 = leaderboard.slice(0, 3);
+    // ==================== Podium: เฉพาะคนที่ได้ 10/10 เท่านั้น ====================
+    const top3 = leaderboard.filter(p => p.score === 10).slice(0, 3);
+    const top3Ids = new Set(top3.map(p => p.employeeId));
+
+    // ที่เหลือทั้งหมด (รวมคนที่ยังไม่ผ่านทุกคน) → Other Rankings
+    const othersBase = leaderboard.filter(p => !top3Ids.has(p.employeeId));
 
     const searchLower = searchTerm.trim().toLowerCase();
 
@@ -117,10 +122,10 @@ export default function PodiumLeaderboard() {
         : [];
 
     const filteredOthers = searchTerm.trim()
-        ? leaderboard.slice(3).filter(p =>
+        ? othersBase.filter(p =>
             String(p.employeeId || '').toLowerCase().includes(searchLower)
         )
-        : leaderboard.slice(3);
+        : othersBase;
 
     // Pagination
     const getStartIndex = (page) => (page === 1 ? 0 : firstPageSize + (page - 2) * normalPageSize);
@@ -128,10 +133,12 @@ export default function PodiumLeaderboard() {
     const startIndex = getStartIndex(currentPage);
     const paginatedOthers = filteredOthers.slice(startIndex, startIndex + currentPageSize);
 
-    const totalPages = Math.ceil((filteredOthers.length - firstPageSize) / normalPageSize) + 1;
+    const totalPages = Math.max(1, Math.ceil((filteredOthers.length - firstPageSize) / normalPageSize) + 1);
 
-    const startRank = currentPage === 1 ? 4 : 4 + firstPageSize + (currentPage - 2) * normalPageSize;
-    const endRank = Math.min(startRank + currentPageSize - 1, leaderboard.length);
+    // อันดับจริงจาก leaderboard ตัวเต็ม (ไม่ hardcode ว่าเริ่มที่ #4)
+    const rankOf = (p) => leaderboard.findIndex(item => item.employeeId === p.employeeId) + 1;
+    const startRank = paginatedOthers.length > 0 ? rankOf(paginatedOthers[0]) : 0;
+    const endRank = paginatedOthers.length > 0 ? rankOf(paginatedOthers[paginatedOthers.length - 1]) : 0;
 
     // ==================== Avatar การ์ตูน (multiavatar - generate ในเครื่อง ไม่พึ่ง API ภายนอก) ====================
     // seed = employeeId → คนเดิมได้ตัวการ์ตูนตัวเดิมเสมอ ไม่เปลี่ยนตอนรีเฟรช
@@ -404,6 +411,26 @@ export default function PodiumLeaderboard() {
                     0%, 100% { text-shadow: 0 0 20px rgba(250,204,21,0.4), 0 0 60px rgba(168,85,247,0.3); }
                     50% { text-shadow: 0 0 40px rgba(250,204,21,0.8), 0 0 90px rgba(168,85,247,0.6); }
                 }
+                @keyframes auroraDrift {
+                    0%, 100% { transform: translateX(-15%) scale(1); opacity: 0.5; }
+                    50% { transform: translateX(15%) scale(1.15); opacity: 0.9; }
+                }
+                @keyframes gradientShift {
+                    0% { background-position: 0% 50%; }
+                    50% { background-position: 100% 50%; }
+                    100% { background-position: 0% 50%; }
+                }
+                @keyframes footerBounce {
+                    0%, 100% { transform: translateY(0) rotate(-4deg); }
+                    50% { transform: translateY(-10px) rotate(4deg); }
+                }
+                @keyframes borderRun {
+                    to { transform: rotate(360deg); }
+                }
+                @keyframes waveLine {
+                    0%, 100% { transform: scaleX(0.6); opacity: 0.5; }
+                    50% { transform: scaleX(1); opacity: 1; }
+                }
                 .animate-crown-float { animation: crownFloat 3s ease-in-out infinite; }
                 .animate-spin-slow { animation: spinSlow 6s linear infinite; }
                 .animate-pulse-glow { animation: pulseGlow 2.5s ease-in-out infinite; }
@@ -411,6 +438,34 @@ export default function PodiumLeaderboard() {
                 .animate-sheen { animation: sheen 3.5s ease-in-out infinite; }
                 .animate-badge-pop { animation: badgePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 1s backwards; }
                 .animate-title-glow { animation: titleGlow 3s ease-in-out infinite; }
+                .animate-aurora { animation: auroraDrift 8s ease-in-out infinite; }
+                .animate-gradient-shift {
+                    background-size: 300% 300%;
+                    animation: gradientShift 6s ease infinite;
+                }
+                .animate-footer-bounce { animation: footerBounce 2.8s ease-in-out infinite; }
+                .animate-wave-line { animation: waveLine 3s ease-in-out infinite; transform-origin: center; }
+                .footer-glass-border { position: relative; overflow: hidden; }
+                .footer-glass-border::before {
+                    content: "";
+                    position: absolute;
+                    inset: -150%;
+                    background: conic-gradient(from 0deg,
+                        transparent 0deg, transparent 60deg,
+                        rgba(250,204,21,0.9) 90deg,
+                        rgba(168,85,247,0.9) 130deg,
+                        transparent 170deg, transparent 240deg,
+                        rgba(16,185,129,0.8) 280deg,
+                        transparent 330deg);
+                    animation: borderRun 5s linear infinite;
+                }
+                .footer-glass-border::after {
+                    content: "";
+                    position: absolute;
+                    inset: 2px;
+                    border-radius: inherit;
+                    background: rgba(15,10,31,0.92);
+                }
                 .animate-shimmer-text {
                     background: linear-gradient(90deg, #fff 40%, #fde047 50%, #fff 60%);
                     background-size: 200% auto;
@@ -474,25 +529,35 @@ export default function PodiumLeaderboard() {
                 </div>
             </div>
 
-            {/* PODIUM */}
+            {/* PODIUM — แสดงเฉพาะคนที่ได้ 10/10 */}
             <div className="max-w-5xl mx-auto mb-10 relative z-10">
-                <div className="flex flex-col items-center gap-6 md:hidden">
-                    {top3[0] && <PodiumBlock player={top3[0]} rank={1} height="h-40" />}
-                    <div className="flex justify-center gap-4 w-full">
-                        {top3[1] && <PodiumBlock player={top3[1]} rank={2} height="h-32" className="w-[48%]" />}
-                        {top3[2] && <PodiumBlock player={top3[2]} rank={3} height="h-32" className="w-[48%]" />}
+                {top3.length > 0 ? (
+                    <>
+                        <div className="flex flex-col items-center gap-6 md:hidden">
+                            {top3[0] && <PodiumBlock player={top3[0]} rank={1} height="h-40" />}
+                            <div className="flex justify-center gap-4 w-full">
+                                {top3[1] && <PodiumBlock player={top3[1]} rank={2} height="h-32" className="w-[48%]" />}
+                                {top3[2] && <PodiumBlock player={top3[2]} rank={3} height="h-32" className="w-[48%]" />}
+                            </div>
+                        </div>
+
+                        <div className="hidden md:flex items-end justify-center gap-4">
+                            {top3[1] && <PodiumBlock player={top3[1]} rank={2} height="h-32" />}
+                            {top3[0] && <PodiumBlock player={top3[0]} rank={1} height="h-52" />}
+                            {top3[2] && <PodiumBlock player={top3[2]} rank={3} height="h-28" />}
+                        </div>
+
+                        {/* พื้นเวทีเรืองแสงใต้โพเดียม */}
+                        <div className="hidden md:block h-2 max-w-3xl mx-auto rounded-full"
+                            style={{ background: "linear-gradient(90deg, transparent, rgba(250,204,21,0.5), transparent)", filter: "blur(2px)" }} />
+                    </>
+                ) : (
+                    <div className="text-center py-10 bg-white/5 backdrop-blur border border-yellow-400/20 rounded-3xl">
+                        <div className="text-5xl mb-3">🏆</div>
+                        <div className="text-lg font-bold text-yellow-300">ยังไม่มีผู้พิชิต 10/10</div>
+                        <div className="text-sm text-white/60 mt-1">ทำแบบทดสอบให้ได้เต็ม 10 คะแนน เพื่อขึ้นโพเดียมเป็นคนแรก!</div>
                     </div>
-                </div>
-
-                <div className="hidden md:flex items-end justify-center gap-4">
-                    {top3[1] && <PodiumBlock player={top3[1]} rank={2} height="h-32" />}
-                    {top3[0] && <PodiumBlock player={top3[0]} rank={1} height="h-52" />}
-                    {top3[2] && <PodiumBlock player={top3[2]} rank={3} height="h-28" />}
-                </div>
-
-                {/* พื้นเวทีเรืองแสงใต้โพเดียม */}
-                <div className="hidden md:block h-2 max-w-3xl mx-auto rounded-full"
-                    style={{ background: "linear-gradient(90deg, transparent, rgba(250,204,21,0.5), transparent)", filter: "blur(2px)" }} />
+                )}
             </div>
 
             {/* Other Rankings */}
@@ -539,12 +604,7 @@ export default function PodiumLeaderboard() {
                                     </span>
                                 </div>
                             </div>
-                            <div className="flex flex-col md:items-end gap-1.5">
-                                <StatusBadge score={Math.max(...employeeHistory.map(h => h.score))} />
-                                <div className="text-sm text-white/60">
-                                    ทั้งหมด <span className="font-bold text-white">{employeeHistory.length}</span> ครั้ง
-                                </div>
-                            </div>
+
                         </div>
 
                         {/* แจ้งเตือนถ้ายังไม่ผ่าน */}
@@ -562,7 +622,7 @@ export default function PodiumLeaderboard() {
                             {employeeHistory.map((item, index) => (
                                 <div key={index} className="flex flex-col md:flex-row md:items-center justify-between bg-white/5 hover:bg-white/10 transition rounded-2xl px-4 py-3 gap-y-1">
                                     <div className="flex items-center gap-3">
-                                        <div className="bg-white/10 text-xs px-3 py-1 rounded-full font-mono w-fit">#{index + 1}</div>
+
                                         <div className="text-sm text-white/70">{formatDate(item.date)}</div>
                                     </div>
                                     <div className="flex items-center gap-4 md:gap-6 font-mono text-sm md:text-base">
@@ -583,8 +643,7 @@ export default function PodiumLeaderboard() {
                         <div className="space-y-2">
                             {paginatedOthers.length > 0 ? (
                                 paginatedOthers.map((p, idx) => {
-                                    const originalIndex = leaderboard.findIndex(item => item.employeeId === p.employeeId);
-                                    const rank = originalIndex + 1;
+                                    const rank = rankOf(p);
                                     const isTop10 = rank <= 10;
                                     const isPass = p.score === 10;
 
@@ -650,6 +709,44 @@ export default function PodiumLeaderboard() {
                     </>
                 )}
             </div>
+
+            {/* ==================== FOOTER ==================== */}
+            <footer className="relative z-10 mt-16 md:mt-24 pb-10">
+                {/* aurora glow ด้านหลัง footer */}
+                <div className="absolute inset-x-0 bottom-0 h-72 pointer-events-none overflow-hidden" aria-hidden="true">
+                    <div className="absolute bottom-[-60px] left-[10%] w-[420px] h-[220px] rounded-full blur-3xl animate-aurora"
+                        style={{ background: "radial-gradient(ellipse, rgba(168,85,247,0.35), transparent 70%)" }} />
+                    <div className="absolute bottom-[-40px] right-[8%] w-[380px] h-[200px] rounded-full blur-3xl animate-aurora"
+                        style={{ background: "radial-gradient(ellipse, rgba(250,204,21,0.22), transparent 70%)", animationDelay: "2.5s" }} />
+                    <div className="absolute bottom-[-80px] left-[45%] w-[320px] h-[200px] rounded-full blur-3xl animate-aurora"
+                        style={{ background: "radial-gradient(ellipse, rgba(16,185,129,0.2), transparent 70%)", animationDelay: "4s" }} />
+                </div>
+
+                {/* เส้นแบ่งเรืองแสง */}
+                <div className="max-w-3xl mx-auto mb-10 flex items-center gap-3 px-4">
+                    <div className="flex-1 h-[2px] rounded-full animate-wave-line"
+                        style={{ background: "linear-gradient(90deg, transparent, rgba(250,204,21,0.8))" }} />
+                    <span className="text-yellow-300 animate-twinkle text-lg">✦</span>
+                    <span className="text-purple-300 animate-twinkle text-sm" style={{ animationDelay: "0.5s" }}>✧</span>
+                    <span className="text-yellow-300 animate-twinkle text-lg" style={{ animationDelay: "1s" }}>✦</span>
+                    <div className="flex-1 h-[2px] rounded-full animate-wave-line"
+                        style={{ background: "linear-gradient(90deg, rgba(250,204,21,0.8), transparent)", animationDelay: "1.5s" }} />
+                </div>
+
+                {/* การ์ดกลาง footer พร้อมขอบไฟวิ่ง */}
+     
+                {/* บรรทัดล่างสุด */}
+                <div className="mt-10 text-center relative">
+                    <div className="flex items-center justify-center gap-2 text-xs md:text-sm text-white/40">
+                        <span className="animate-twinkle text-yellow-400/60">✦</span>
+                        <span>Quiz Leaderboard • Hall of Fame</span>
+                        <span className="animate-twinkle text-yellow-400/60" style={{ animationDelay: "0.8s" }}>✦</span>
+                    </div>
+                    <div className="mt-2 text-[10px] md:text-xs text-white/25">
+                        อัปเดตอันดับแบบเรียลไทม์ทุกครั้งที่โหลดหน้า
+                    </div>
+                </div>
+            </footer>
         </div>
     );
 }
