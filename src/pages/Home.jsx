@@ -121,6 +121,10 @@ export default function PodiumLeaderboard() {
             .sort((a, b) => parseDateTime(b.date) - parseDateTime(a.date))
         : [];
 
+    const searchedPlayer = searchedEmployeeId
+        ? leaderboard.find(p => p.employeeId === searchedEmployeeId)
+        : null;
+
     const filteredOthers = searchTerm.trim()
         ? othersBase.filter(p =>
             String(p.employeeId || '').toLowerCase().includes(searchLower)
@@ -136,9 +140,14 @@ export default function PodiumLeaderboard() {
     const totalPages = Math.max(1, Math.ceil((filteredOthers.length - firstPageSize) / normalPageSize) + 1);
 
     // อันดับจริงจาก leaderboard ตัวเต็ม (ไม่ hardcode ว่าเริ่มที่ #4)
-    const rankOf = (p) => leaderboard.findIndex(item => item.employeeId === p.employeeId) + 1;
-    const startRank = paginatedOthers.length > 0 ? rankOf(paginatedOthers[0]) : 0;
-    const endRank = paginatedOthers.length > 0 ? rankOf(paginatedOthers[paginatedOthers.length - 1]) : 0;
+    // จัดอันดับเฉพาะคนที่ได้ 10/10 เท่านั้น คนที่ยังไม่ผ่านไม่มีอันดับ (แสดง "-")
+    const rankOf = (p) => {
+        if (p.score !== 10) return null;
+        return leaderboard.findIndex(item => item.employeeId === p.employeeId) + 1;
+    };
+    const rankedOnPage = paginatedOthers.map(rankOf).filter(r => r !== null);
+    const startRank = rankedOnPage.length > 0 ? rankedOnPage[0] : null;
+    const endRank = rankedOnPage.length > 0 ? rankedOnPage[rankedOnPage.length - 1] : null;
 
     // ==================== Avatar การ์ตูน (multiavatar - generate ในเครื่อง ไม่พึ่ง API ภายนอก) ====================
     // seed = employeeId → คนเดิมได้ตัวการ์ตูนตัวเดิมเสมอ ไม่เปลี่ยนตอนรีเฟรช
@@ -325,7 +334,7 @@ export default function PodiumLeaderboard() {
         return (
             <div className="flex flex-col items-center gap-3 mt-6">
                 <div className="text-xs md:text-sm text-white/60 text-center">
-                    แสดงอันดับ <span className="font-bold text-white">{startRank}</span> - <span className="font-bold text-white">{endRank}</span>
+                    แสดงอันดับ <span className="font-bold text-white">{startRank ?? "-"}</span> - <span className="font-bold text-white">{endRank ?? "-"}</span>
                     {" "}จากทั้งหมด <span className="font-bold text-white">{leaderboard.length}</span> คน
                 </div>
 
@@ -600,7 +609,7 @@ export default function PodiumLeaderboard() {
                                 <div className="mt-1">
                                     <span className="text-sm text-white/60">ปัจจุบันอยู่อันดับ </span>
                                     <span className="font-bold text-yellow-400 text-xl animate-pulse">
-                                        #{leaderboard.findIndex(p => p.employeeId === searchedEmployeeId) + 1}
+                                        {searchedPlayer && rankOf(searchedPlayer) !== null ? `#${rankOf(searchedPlayer)}` : "-"}
                                     </span>
                                 </div>
                             </div>
@@ -644,7 +653,7 @@ export default function PodiumLeaderboard() {
                             {paginatedOthers.length > 0 ? (
                                 paginatedOthers.map((p, idx) => {
                                     const rank = rankOf(p);
-                                    const isTop10 = rank <= 10;
+                                    const isTop10 = rank !== null && rank <= 10;
                                     const isPass = p.score === 10;
 
                                     return (
@@ -662,7 +671,7 @@ export default function PodiumLeaderboard() {
                                                 transition: `all 0.4s ease ${Math.min(idx * 0.04, 0.6)}s`,
                                             }}>
                                             <div className="w-10 md:w-12 flex-shrink-0">
-                                                <span className={`font-mono font-bold text-lg md:text-xl ${isTop10 ? "text-yellow-400" : "text-white/70"}`}>#{rank}</span>
+                                                <span className={`font-mono font-bold text-lg md:text-xl ${isTop10 ? "text-yellow-400" : "text-white/70"}`}>{rank !== null ? `#${rank}` : "-"}</span>
                                             </div>
 
                                             <div className="flex items-center gap-3 flex-1 min-w-0">

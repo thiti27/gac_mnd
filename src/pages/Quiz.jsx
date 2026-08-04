@@ -432,14 +432,10 @@ export default function Quiz() {
                                 <span className="text-white/40">→</span>
 
                                 <span className="px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-300">
-                                    เวลาน้อยที่สุด
+                                    ใช้เวลาน้อยที่สุด
                                 </span>
 
-                                <span className="text-white/40">→</span>
 
-                                <span className="px-3 py-1 rounded-full bg-white/10 text-white/80">
-                                    ส่งก่อน
-                                </span>
                             </div>
 
 
