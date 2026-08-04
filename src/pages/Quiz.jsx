@@ -41,6 +41,11 @@ const sendToSupabase = async (data) => {
         return true;
     }
 
+    // 2.5) เคยได้คะแนนเต็ม 10 แล้ว → ไม่ต้องอัปเดตอีก
+    if (existing.score === 10) {
+        return true;
+    }
+
     // 3) เคย save → ถ้าผลใหม่ดีกว่า ให้ update ทับ id เดิม
     if (isBetter(data, existing)) {
         const { error } = await supabase
@@ -61,6 +66,23 @@ const sendToSupabase = async (data) => {
 
     // 4) ผลเดิมดีกว่า → ไม่แก้ไขอะไร
     return true;
+};
+
+// ตรวจสอบว่ารหัสพนักงานนี้เคยได้คะแนนเต็ม 10 แล้วหรือยัง
+const checkAlreadyPassed = async (employeeId) => {
+    const { data: rows, error } = await supabase
+        .from("quiz_results")
+        .select("score")
+        .eq("employee_id", employeeId)
+        .order("score", { ascending: false })
+        .limit(1);
+
+    if (error) {
+        console.error(error);
+        throw error;
+    }
+
+    return (rows?.[0]?.score ?? 0) === 10;
 };
 
 
@@ -117,6 +139,8 @@ export default function Quiz() {
     const [submitError, setSubmitError] = useState("");
     const [elapsedTime, setElapsedTime] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
+    const [isChecking, setIsChecking] = useState(false);
+    const [showAlreadyPassed, setShowAlreadyPassed] = useState(false);
 
     // ===== State ใหม่สำหรับ Flow: Quiz → Comment → Result =====
     const [showComment, setShowComment] = useState(false);
@@ -181,14 +205,28 @@ export default function Quiz() {
         return () => clearInterval(timerRef.current);
     }, [isStarted, isSubmitted, showComment]);
 
-    const handleStartQuiz = (values) => {
-        const userData = { ...values, timestamp: Date.now() };
-        localStorage.setItem("userInfo", JSON.stringify(userData));
+    const handleStartQuiz = async (values) => {
+        setIsChecking(true);
+        try {
+            const alreadyPassed = await checkAlreadyPassed(values.employeeId);
+            if (alreadyPassed) {
+                setShowAlreadyPassed(true);
+                return;
+            }
 
-        setUserInfo(values);
-        setIsStarted(true);
-        setStartTime(Date.now());
-        setElapsedTime(0);
+            const userData = { ...values, timestamp: Date.now() };
+            localStorage.setItem("userInfo", JSON.stringify(userData));
+
+            setUserInfo(values);
+            setIsStarted(true);
+            setStartTime(Date.now());
+            setElapsedTime(0);
+        } catch (error) {
+            console.error("ตรวจสอบสถานะรหัสพนักงานล้มเหลว:", error);
+            alert("เกิดข้อผิดพลาดในการตรวจสอบข้อมูล กรุณาลองใหม่อีกครั้ง");
+        } finally {
+            setIsChecking(false);
+        }
     };
 
     const handleAnswer = (questionId, optionId) => {
@@ -430,9 +468,7 @@ export default function Quiz() {
                                 </span>
                             </div>
 
-                            <p className="mt-3 text-sm text-white/60">
-                                * หากทำแบบทดสอบหลายครั้ง ระบบจะเลือกผลการทดสอบที่ดีที่สุดในการจัดอันดับ
-                            </p>
+                         
                         </div>
                     </div>
                 )}
@@ -485,9 +521,10 @@ export default function Quiz() {
 
                                     <button
                                         type="submit"
-                                        className="mt-8 w-full rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-3.5 transition-all duration-300 hover:scale-[1.02] shadow-lg shadow-yellow-500/20"
+                                        disabled={isChecking}
+                                        className="mt-8 w-full rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-3.5 transition-all duration-300 hover:scale-[1.02] shadow-lg shadow-yellow-500/20 disabled:opacity-60 disabled:hover:scale-100"
                                     >
-                                        🚀 เริ่มทำแบบทดสอบ
+                                        {isChecking ? "⏳ กำลังตรวจสอบ..." : "🚀 เริ่มทำแบบทดสอบ"}
                                     </button>
                                 </Form>
                             )}
@@ -675,6 +712,23 @@ export default function Quiz() {
                     </div>
                 )}
             </div>
+
+            {/* Popup: เคยทำแบบทดสอบผ่านแล้ว */}
+            {showAlreadyPassed && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[999] p-4">
+                    <div className="bg-[#1F1F2E] border border-yellow-400/40 rounded-3xl px-8 py-8 text-center w-[320px] anim-pop anim-glow">
+                        <div className="text-6xl mb-4 anim-bounce inline-block">🏆</div>
+                        <p className="text-xl font-bold mb-2">คุณทำแบบทดสอบผ่านแล้ว</p>
+                        <p className="text-white/70 mb-6">รอลุ้นรางวัล 🎉</p>
+                        <button
+                            onClick={() => setShowAlreadyPassed(false)}
+                            className="w-full rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-3 transition-all hover:scale-[1.02]"
+                        >
+                            ตกลง
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Loading Popup */}
             {isLoading && (
