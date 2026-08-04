@@ -167,30 +167,11 @@ export default function Quiz() {
         employeeId: Yup.string().required("กรุณากรอกรหัสพนักงาน"),
     });
 
-    // โหลดข้อมูลผู้ใช้จาก localStorage (อายุ 1 ชั่วโมง)
-    const [initialUserInfo, setInitialUserInfo] = useState({
+    const initialUserInfo = {
         employeeId: "",
         fullName: "",
         department: "",
-    });
-
-    useEffect(() => {
-        const savedUser = localStorage.getItem("userInfo");
-        if (savedUser) {
-            const parsed = JSON.parse(savedUser);
-            const now = Date.now();
-
-            if (now - parsed.timestamp > 3600000) {
-                localStorage.removeItem("userInfo");
-            } else {
-                setInitialUserInfo({
-                    employeeId: parsed.employeeId || "",
-                    fullName: parsed.fullName || "",
-                    department: parsed.department || "",
-                });
-            }
-        }
-    }, []);
+    };
 
     // ===== Timer: เดินเฉพาะตอนทำข้อสอบเท่านั้น =====
     // หยุดทันทีเมื่อเข้าหน้า Comment (showComment) หรือส่งเสร็จ (isSubmitted)
@@ -213,9 +194,6 @@ export default function Quiz() {
                 setShowAlreadyPassed(true);
                 return;
             }
-
-            const userData = { ...values, timestamp: Date.now() };
-            localStorage.setItem("userInfo", JSON.stringify(userData));
 
             setUserInfo(values);
             setIsStarted(true);
@@ -294,10 +272,6 @@ export default function Quiz() {
 
         try {
             const resultFromSheet = await sendToSupabase(attemptData);
-
-            // บันทึก localStorage หลัง Save Google Sheet สำเร็จเท่านั้น
-            const existingAttempts = JSON.parse(localStorage.getItem("attempts")) || [];
-            localStorage.setItem("attempts", JSON.stringify([...existingAttempts, attemptData]));
 
             setResult({
                 score: pendingResult.score,
@@ -487,7 +461,6 @@ export default function Quiz() {
                             initialValues={initialUserInfo}
                             validationSchema={validationSchema}
                             onSubmit={handleStartQuiz}
-                            enableReinitialize
                         >
                             {({ errors, touched }) => (
                                 <Form>
