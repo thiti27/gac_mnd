@@ -26,7 +26,7 @@ export default function PodiumLeaderboard() {
         try {
             const { data, error } = await supabase
                 .from("quiz_results")
-                .select("*");
+                .select("employee_id, score, time, comment, created_at");
 
             if (error) throw error;
 

@@ -164,7 +164,13 @@ export default function Quiz() {
     const totalQuestions = quizQuestions.length;
 
     const validationSchema = Yup.object({
-        employeeId: Yup.string().required("กรุณากรอกรหัสพนักงาน"),
+        employeeId: Yup.string()
+            .required("กรุณากรอกรหัสพนักงาน")
+            .test(
+                "not-blank",
+                "กรุณากรอกรหัสพนักงาน",
+                (value) => !!value && value.trim().length > 0
+            ),
     });
 
     const initialUserInfo = {
@@ -187,15 +193,16 @@ export default function Quiz() {
     }, [isStarted, isSubmitted, showComment]);
 
     const handleStartQuiz = async (values) => {
+        const employeeId = values.employeeId.trim();
         setIsChecking(true);
         try {
-            const alreadyPassed = await checkAlreadyPassed(values.employeeId);
+            const alreadyPassed = await checkAlreadyPassed(employeeId);
             if (alreadyPassed) {
                 setShowAlreadyPassed(true);
                 return;
             }
 
-            setUserInfo(values);
+            setUserInfo({ ...values, employeeId });
             setIsStarted(true);
             setStartTime(Date.now());
             setElapsedTime(0);
