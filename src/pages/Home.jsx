@@ -2,6 +2,34 @@ import { useState, useEffect, useMemo } from "react";
 import multiavatar from "@multiavatar/multiavatar/esm";
 import { supabase } from "../lib/supabase";
 
+// ===== Cache ผล quiz_results ไว้ใน sessionStorage แบบมี TTL สั้น ๆ =====
+// กันกรณีผู้ใช้กด refresh หน้ารัว ๆ แล้วยิง Supabase ซ้ำทุกครั้งโดยไม่จำเป็น
+// (เคลียร์อัตโนมัติเมื่อปิดแท็บ, ข้อมูล Leaderboard เปลี่ยนเฉพาะตอนมีคนส่งผลสอบ
+// จึงไม่จำเป็นต้อง fresh ทุกครั้งที่โหลดหน้า)
+const LEADERBOARD_CACHE_KEY = "leaderboard_cache_v1";
+const LEADERBOARD_CACHE_TTL_MS = 20_000; // 20 วินาที
+
+const readLeaderboardCache = () => {
+    try {
+        const raw = sessionStorage.getItem(LEADERBOARD_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed?.fetchedAt || !Array.isArray(parsed?.data)) return null;
+        if (Date.now() - parsed.fetchedAt > LEADERBOARD_CACHE_TTL_MS) return null;
+        return parsed.data;
+    } catch {
+        return null;
+    }
+};
+
+const writeLeaderboardCache = (data) => {
+    try {
+        sessionStorage.setItem(LEADERBOARD_CACHE_KEY, JSON.stringify({ data, fetchedAt: Date.now() }));
+    } catch {
+        // sessionStorage เต็ม/ถูกปิด (เช่น private mode บางเบราว์เซอร์) → ข้ามเงียบ ๆ ไม่กระทบการทำงานหลัก
+    }
+};
+
 export default function PodiumLeaderboard() {
     const [allAttempts, setAllAttempts] = useState([]);
     const [leaderboard, setLeaderboard] = useState([]);
@@ -24,20 +52,31 @@ export default function PodiumLeaderboard() {
         if (isManualRefresh) setIsRefreshing(true);
 
         try {
-            const { data, error } = await supabase
-                .from("quiz_results")
-                .select("employee_id, score, time, comment, created_at");
+            // refresh ปกติ (ไม่ใช่กดปุ่ม refresh เอง) ให้ลองใช้ cache ก่อน
+            // กันกรณีผู้ใช้กด F5 รัว ๆ ยิง Supabase ซ้ำโดยไม่จำเป็น
+            const cached = !isManualRefresh ? readLeaderboardCache() : null;
+            let mapped;
 
-            if (error) throw error;
+            if (cached) {
+                mapped = cached;
+            } else {
+                const { data, error } = await supabase
+                    .from("quiz_results")
+                    .select("employee_id, score, time, comment, created_at");
 
-            // แปลงชื่อ field ให้เหมือนโค้ดเดิม
-            const mapped = data.map(item => ({
-                employeeId: item.employee_id,
-                score: item.score,
-                time: item.time,
-                comment: item.comment,
-                date: item.created_at,
-            }));
+                if (error) throw error;
+
+                // แปลงชื่อ field ให้เหมือนโค้ดเดิม
+                mapped = data.map(item => ({
+                    employeeId: item.employee_id,
+                    score: item.score,
+                    time: item.time,
+                    comment: item.comment,
+                    date: item.created_at,
+                }));
+
+                writeLeaderboardCache(mapped);
+            }
 
             setAllAttempts(mapped);
 

@@ -5,67 +5,48 @@ import Select from "react-select";
 import questions from "../data/questions";
 import confetti from "canvas-confetti";
 import { supabase } from "../lib/supabase";
-const isBetter = (newData, oldData) => {
-    if (newData.score > oldData.score) return true;
-    if (newData.score === oldData.score && newData.time < oldData.time) return true;
-    return false;
+// update แบบมีเงื่อนไขระดับ query เดียว (atomic): Postgres จะแก้แถวก็ต่อเมื่อ
+// คะแนนปัจจุบัน "ในฐานข้อมูล ณ ขณะนั้น" ยังไม่ถึง 10 และผลใหม่ดีกว่าจริง ๆ
+// เงื่อนไขถูกประเมิน ณ ตอน execute โดย Postgres เอง ไม่ได้อิงจากค่าที่ฝั่ง client
+// อ่านมาก่อนหน้า จึงไม่มี race แม้มีหลาย request ชนกันพร้อมกัน (ต่างจากแบบ
+// select-แล้วค่อย-update ที่อาจใช้ค่าเก่าตัดสินใจ)
+const applyBestScoreUpdate = async (data) => {
+    const { error } = await supabase
+        .from("quiz_results")
+        .update({
+            score: data.score,
+            time: data.time,
+            comment: data.comment,
+        })
+        .eq("employee_id", data.employee_id)
+        .lt("score", 10)
+        .or(`score.lt.${data.score},and(score.eq.${data.score},time.gt.${data.time})`);
+
+    if (error) {
+        console.error(error);
+        throw error;
+    }
+    return true;
 };
 
 const sendToSupabase = async (data) => {
-    // 1) หาผลเดิมที่ดีที่สุดของ employee_id นี้ (รองรับกรณีมีหลายแถว)
-    const { data: rows, error: fetchError } = await supabase
+    // 1) ลอง insert ก่อนเสมอ (กรณีปกติ = ยังไม่เคยมี record ของ employee_id นี้)
+    const { error: insertError } = await supabase
         .from("quiz_results")
-        .select("id, score, time")
-        .eq("employee_id", data.employee_id)
-        .order("score", { ascending: false })
-        .order("time", { ascending: true })
-        .limit(1);
+        .insert([data]);
 
-    if (fetchError) {
-        console.error(fetchError);
-        throw fetchError;
+    if (!insertError) return true;
+
+    // employee_id นี้มี unique constraint กันไว้: ถ้ามี record อยู่แล้ว (ไม่ว่าจะ
+    // มีมาก่อนหน้านี้ หรือมีอีก request แข่ง insert เข้ามาพร้อมกัน เช่น เปิด 2 แท็บ)
+    // Postgres จะตอบกลับด้วย error code 23505 (unique violation)
+    if (insertError.code !== "23505") {
+        console.error(insertError);
+        throw insertError;
     }
 
-    const existing = rows?.[0] ?? null;
-
-    // 2) ไม่เคย save → insert ใหม่
-    if (!existing) {
-        const { error } = await supabase
-            .from("quiz_results")
-            .insert([data]);
-
-        if (error) {
-            console.error(error);
-            throw error;
-        }
-        return true;
-    }
-
-    // 2.5) เคยได้คะแนนเต็ม 10 แล้ว → ไม่ต้องอัปเดตอีก
-    if (existing.score === 10) {
-        return true;
-    }
-
-    // 3) เคย save → ถ้าผลใหม่ดีกว่า ให้ update ทับ id เดิม
-    if (isBetter(data, existing)) {
-        const { error } = await supabase
-            .from("quiz_results")
-            .update({
-                score: data.score,
-                time: data.time,
-                comment: data.comment,
-            })
-            .eq("id", existing.id);
-
-        if (error) {
-            console.error(error);
-            throw error;
-        }
-        return true;
-    }
-
-    // 4) ผลเดิมดีกว่า → ไม่แก้ไขอะไร
-    return true;
+    // 2) มี record อยู่แล้ว → update แบบมีเงื่อนไข (ทับเฉพาะตอนผลใหม่ดีกว่าจริง)
+    return await applyBestScoreUpdate(data);
 };
 
 // ตรวจสอบว่ารหัสพนักงานนี้เคยได้คะแนนเต็ม 10 แล้วหรือยัง
@@ -193,7 +174,8 @@ export default function Quiz() {
     }, [isStarted, isSubmitted, showComment]);
 
     const handleStartQuiz = async (values) => {
-        const employeeId = values.employeeId.trim();
+        // trim + toUpperCase กัน " abc123 " / "abc123" / "ABC123" ถูกนับเป็นคนละคน
+        const employeeId = values.employeeId.trim().toUpperCase();
         setIsChecking(true);
         try {
             const alreadyPassed = await checkAlreadyPassed(employeeId);
@@ -279,6 +261,14 @@ export default function Quiz() {
 
         try {
             const resultFromSheet = await sendToSupabase(attemptData);
+
+            // ล้าง cache ของหน้า Leaderboard (key ต้องตรงกับ LEADERBOARD_CACHE_KEY ใน src/pages/Home.jsx)
+            // กันไม่ให้กด "ดู Leaderboard" ต่อจากหน้านี้แล้วเจอข้อมูลเก่าที่ยังไม่รวมผลที่เพิ่งส่ง
+            try {
+                sessionStorage.removeItem("leaderboard_cache_v1");
+            } catch {
+                // sessionStorage ใช้งานไม่ได้ (เช่น private mode บางเบราว์เซอร์) → ข้ามเงียบ ๆ ไม่กระทบการบันทึกผล
+            }
 
             setResult({
                 score: pendingResult.score,
@@ -472,14 +462,25 @@ export default function Quiz() {
                                             รหัสพนักงาน <span className="text-red-400">*</span>
                                         </label>
 
-                                        <Field
-                                            name="employeeId"
-                                            placeholder="รหัสพนักงาน"
-                                            className={`w-full rounded-2xl bg-white/10 border px-4 py-3 text-white placeholder:text-white/40 transition-all focus:outline-none focus:ring-2 focus:ring-yellow-400/30 focus:border-yellow-400 ${errors.employeeId && touched.employeeId
-                                                ? "border-red-500"
-                                                : "border-white/20"
-                                                }`}
-                                        />
+                                        <Field name="employeeId">
+                                            {({ field, form }) => (
+                                                <input
+                                                    {...field}
+                                                    type="text"
+                                                    placeholder="รหัสพนักงาน"
+                                                    onChange={(e) => {
+                                                        // พิมพ์ตัวเล็กแปลงเป็นตัวใหญ่ + ตัดช่องว่างทั้งหมดออกอัตโนมัติ
+                                                        // ระหว่างพิมพ์ ป้องกันปัญหาตัวพิมพ์/whitespace ตั้งแต่ต้นทาง
+                                                        const cleaned = e.target.value.toUpperCase().replace(/\s+/g, "");
+                                                        form.setFieldValue("employeeId", cleaned);
+                                                    }}
+                                                    className={`w-full rounded-2xl bg-white/10 border px-4 py-3 text-white placeholder:text-white/40 transition-all focus:outline-none focus:ring-2 focus:ring-yellow-400/30 focus:border-yellow-400 ${errors.employeeId && touched.employeeId
+                                                        ? "border-red-500"
+                                                        : "border-white/20"
+                                                        }`}
+                                                />
+                                            )}
+                                        </Field>
 
                                         <ErrorMessage
                                             name="employeeId"
