@@ -723,13 +723,15 @@ export default function Quiz() {
                         </div>
 
                         <div className="flex flex-col md:flex-row gap-4 justify-center">
-                            <button
-                                onClick={handleRetryQuiz}
-                                disabled={isChecking}
-                                className="px-10 py-4 rounded-2xl font-bold text-lg bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-400 hover:to-blue-400 text-white transition-all hover:scale-105 shadow-[0_0_25px_rgba(59,130,246,0.35)] disabled:opacity-60 disabled:hover:scale-100"
-                            >
-                                {isChecking ? t("quiz.checking") : t("quiz.retryAgain")}
-                            </button>
+                            {result.score < 10 && (
+                                <button
+                                    onClick={handleRetryQuiz}
+                                    disabled={isChecking}
+                                    className="px-10 py-4 rounded-2xl font-bold text-lg bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-400 hover:to-blue-400 text-white transition-all hover:scale-105 shadow-[0_0_25px_rgba(59,130,246,0.35)] disabled:opacity-60 disabled:hover:scale-100"
+                                >
+                                    {isChecking ? t("quiz.checking") : t("quiz.retryAgain")}
+                                </button>
+                            )}
                             {result.score === 10 && (
                                 <a href="/" className="px-8 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black font-bold rounded-2xl hover:from-yellow-300 hover:to-amber-400 transition-all hover:scale-105 text-center">
                                     {t("quiz.viewLeaderboard")}
