@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import multiavatar from "@multiavatar/multiavatar/esm";
 import { supabase } from "../lib/supabase";
+import { useLanguage } from "../context/LanguageContext";
 
 // ===== Cache ผล quiz_results ไว้ใน sessionStorage แบบมี TTL สั้น ๆ =====
 // กันกรณีผู้ใช้กด refresh หน้ารัว ๆ แล้วยิง Supabase ซ้ำทุกครั้งโดยไม่จำเป็น
@@ -31,6 +33,8 @@ const writeLeaderboardCache = (data) => {
 };
 
 export default function PodiumLeaderboard() {
+    const navigate = useNavigate();
+    const { t, lang } = useLanguage();
     const [allAttempts, setAllAttempts] = useState([]);
     const [leaderboard, setLeaderboard] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -40,8 +44,10 @@ export default function PodiumLeaderboard() {
     const [searchTerm, setSearchTerm] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
 
-    const firstPageSize = 17;
-    const normalPageSize = 20;
+    // Other Rankings หน้าแรกแสดงลำดับ 4-10 (ต่อจาก podium 3 อันดับแรกพอดี = 7 คน)
+    // หน้า 2 เป็นต้นไปแสดงครั้งละ 10 อันดับ (11-20, 21-30, ...) ต่อเนื่องไม่มีช่วงขาด
+    const firstPageSize = 7;
+    const normalPageSize = 10;
 
     const parseDateTime = (dateStr) => {
         if (!dateStr) return 0;
@@ -160,10 +166,6 @@ export default function PodiumLeaderboard() {
             .sort((a, b) => parseDateTime(b.date) - parseDateTime(a.date))
         : [];
 
-    const searchedPlayer = searchedEmployeeId
-        ? leaderboard.find(p => p.employeeId === searchedEmployeeId)
-        : null;
-
     const filteredOthers = searchTerm.trim()
         ? othersBase.filter(p =>
             String(p.employeeId || '').toLowerCase().includes(searchLower)
@@ -212,7 +214,7 @@ export default function PodiumLeaderboard() {
 
         const d = new Date(dateStr.replace(" ", "T"));
 
-        return d.toLocaleString("th-TH", {
+        return d.toLocaleString(lang === "en" ? "en-GB" : "th-TH", {
             timeZone: "Asia/Bangkok",
             day: "2-digit",
             month: "short",
@@ -236,15 +238,87 @@ export default function PodiumLeaderboard() {
                 bg-emerald-400/15 text-emerald-300 border border-emerald-400/40
                 shadow-[0_0_12px_rgba(16,185,129,0.25)]`}>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
-                Pass
+                {t("home.statusPass")}
             </span>
         ) : (
             <span className={`inline-flex items-center ${sizeClass} rounded-full font-bold uppercase tracking-wide
                 bg-rose-500/10 text-rose-300 border border-rose-400/40`}
-                title="ยังไม่ผ่าน สามารถทำแบบทดสอบใหม่ได้">
+                title={t("home.notPassTitle")}>
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                Not Pass
+                {t("home.statusNotPass")}
             </span>
+        );
+    };
+
+    // ==================== แถวอันดับ (ใช้ร่วมกันทั้ง Other Rankings และผลค้นหา) ====================
+    const RankRow = ({ player, rank, delay = 0 }) => {
+        const isTop10 = rank !== null && rank <= 10;
+        const isPass = player.score === 10;
+
+        // การ์ด Not Pass เท่านั้นที่คลิกได้ → ไปหน้า Quiz พร้อมเติมรหัสพนักงานให้
+        // (แค่เติมให้ ไม่ auto เริ่มทำ ผู้ใช้ต้องกด "เริ่มทำแบบทดสอบ" เองอีกที)
+        const handleRowClick = () => {
+            if (isPass) return;
+            navigate(`/quiz?employeeId=${encodeURIComponent(player.employeeId)}`);
+        };
+
+        return (
+            <div
+                onClick={!isPass ? handleRowClick : undefined}
+                role={!isPass ? "button" : undefined}
+                tabIndex={!isPass ? 0 : undefined}
+                onKeyDown={!isPass ? (e) => { if (e.key === "Enter" || e.key === " ") handleRowClick(); } : undefined}
+                title={!isPass ? t("home.clickToRetryTitle") : undefined}
+                className={`flex items-center justify-between backdrop-blur transition-all duration-300 rounded-2xl px-4 py-2.5 md:px-5 md:py-3 text-sm md:text-base
+                    hover:scale-[1.02]
+                    ${!isPass ? "cursor-pointer" : ""}
+                    ${isPass
+                        ? "hover:shadow-[0_0_20px_rgba(16,185,129,0.25)] " + (isTop10
+                            ? "bg-gradient-to-r from-emerald-500/10 via-purple-500/10 to-white/5 border border-emerald-400/25 hover:bg-emerald-500/10"
+                            : "bg-white/5 border border-emerald-400/15 hover:bg-white/10")
+                        : "bg-white/[0.03] border border-rose-400/15 hover:bg-rose-500/[0.07] hover:shadow-[0_0_20px_rgba(244,63,94,0.15)]"}`}
+                style={{
+                    opacity: mounted ? 1 : 0,
+                    transform: mounted ? "translateX(0)" : "translateX(-20px)",
+                    transition: `all 0.4s ease ${Math.min(delay * 0.04, 0.6)}s`,
+                }}>
+                <div className="w-10 md:w-12 flex-shrink-0">
+                    <span className={`font-mono font-bold text-lg md:text-xl ${isTop10 ? "text-yellow-400" : "text-white/70"}`}>{rank !== null ? `#${rank}` : "-"}</span>
+                </div>
+
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className={`w-9 h-9 md:w-11 md:h-11 rounded-full ring-2 overflow-hidden flex-shrink-0
+                        ${isPass ? "ring-emerald-400/50" : "ring-white/15 grayscale-[35%] opacity-90"}`}>
+                        <Avatar3D player={player} className="w-full h-full rounded-full" />
+                    </div>
+                    <div className="min-w-0">
+                        <div className={`font-semibold truncate ${!isPass ? "text-white/80" : ""}`}>
+                            {player.employeeId}
+                            {isTop10 && <span className="ml-1.5 text-xs">🔥</span>}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2">
+                            <StatusBadge score={player.score} size="sm" />
+                            {!isPass && (
+                                <span className="hidden md:inline text-[10px] text-white/40">
+                                    {t("home.clickToRetry")}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-4 md:gap-6 text-right">
+                    <div>
+                        <span className={`font-bold ${isPass ? "text-emerald-300" : "text-rose-300"}`}>{player.score}</span>
+                        <span className="text-white/40">/10</span>
+                    </div>
+                    <div className="text-white/60 w-12 md:w-14 text-right">{player.time}s</div>
+                </div>
+
+                <div className="hidden md:block text-right text-sm text-white/70 w-28 flex-shrink-0">
+                    {formatDate(player.date)}
+                </div>
+            </div>
         );
     };
 
@@ -371,11 +445,8 @@ export default function PodiumLeaderboard() {
         if (totalPages <= 1) return null;
 
         return (
-            <div className="flex flex-col items-center gap-3 mt-6">
-                <div className="text-xs md:text-sm text-white/60 text-center">
-                    แสดงอันดับ <span className="font-bold text-white">{startRank ?? "-"}</span> - <span className="font-bold text-white">{endRank ?? "-"}</span>
-                    {" "}จากทั้งหมด <span className="font-bold text-white">{leaderboard.length}</span> คน
-                </div>
+            <div className="flex flex-col items-center gap-3 mt-4">
+            
 
                 <div className="flex items-center gap-2">
                     <button
@@ -383,7 +454,7 @@ export default function PodiumLeaderboard() {
                         disabled={currentPage === 1}
                         className="px-4 py-2 text-sm rounded-xl bg-white/10 hover:bg-white/20 hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 transition-all"
                     >
-                        ← ก่อนหน้า
+                        {t("home.prevPage")}
                     </button>
                     <div className="px-4 py-2 bg-white/5 rounded-xl text-sm">
                         {currentPage} / {totalPages}
@@ -393,7 +464,7 @@ export default function PodiumLeaderboard() {
                         disabled={currentPage === totalPages}
                         className="px-4 py-2 text-sm rounded-xl bg-white/10 hover:bg-white/20 hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 transition-all"
                     >
-                        ถัดไป →
+                        {t("home.nextPage")}
                     </button>
                 </div>
             </div>
@@ -409,7 +480,7 @@ export default function PodiumLeaderboard() {
                         <div className="absolute inset-2 border-4 border-purple-500 border-b-transparent rounded-full animate-spin" style={{ animationDirection: "reverse" }}></div>
                         <div className="absolute inset-0 flex items-center justify-center text-xl">🏆</div>
                     </div>
-                    <p className="animate-pulse">กำลังโหลดข้อมูล ... </p>
+                    <p className="animate-pulse">{t("home.loading")}</p>
                 </div>
             </div>
         );
@@ -548,26 +619,26 @@ export default function PodiumLeaderboard() {
             </div>
 
             {/* Header */}
-            <div className="text-center mb-8 md:mb-10 relative z-10">
-                <div className="text-5xl mb-2 animate-crown-float inline-block">🏆</div>
-                <h1 className="text-4xl md:text-6xl font-black tracking-tighter animate-title-glow bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-400 bg-clip-text text-transparent">
+            <div className="text-center mb-5 relative z-10">
+                <div className="text-4xl mb-1 animate-crown-float inline-block">🏆</div>
+                <h1 className="text-3xl md:text-5xl font-black tracking-tighter animate-title-glow bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-400 bg-clip-text text-transparent">
                     LEADERBOARD
                 </h1>
-                <div className="flex items-center justify-center gap-2 mt-2 text-yellow-400/70 text-sm">
+                <div className="flex items-center justify-center gap-2 mt-1 text-yellow-400/70 text-sm">
                     <span className="animate-twinkle">✦</span>
-                    <span>Hall of Fame</span>
+                    <span>{t("home.hallOfFame")}</span>
                     <span className="animate-twinkle" style={{ animationDelay: "0.9s" }}>✦</span>
                 </div>
             </div>
 
             {/* Summary Stats */}
-            <div className="max-w-3xl mx-auto mb-8 relative z-10">
+            <div className="max-w-3xl mx-auto mb-6 relative z-10">
                 <div className="flex justify-center">
-                    <div className="flex items-center gap-4 bg-white/5 backdrop-blur border border-emerald-400/30 rounded-2xl px-6 py-3 text-sm md:text-base shadow-[0_0_25px_rgba(16,185,129,0.15)]">
+                    <div className="flex items-center gap-4 bg-white/5 backdrop-blur border border-emerald-400/30 rounded-2xl px-5 py-2.5 text-sm md:text-base shadow-[0_0_25px_rgba(16,185,129,0.15)]">
                         <div className="flex items-center gap-2">
                             <span className="text-2xl">🎯</span>
                             <span className="text-emerald-400 font-bold text-lg">
-                                ผ่าน {leaderboard.filter(p => p.score === 10).length} / {leaderboard.length} คน
+                                {t("home.passedCount")(leaderboard.filter(p => p.score === 10).length, leaderboard.length)}
                             </span>
                             <span className="text-emerald-400 font-semibold text-sm">
                                 ({leaderboard.length > 0 ? ((leaderboard.filter(p => p.score === 10).length / leaderboard.length) * 100).toFixed(1) : 0}%)
@@ -578,21 +649,21 @@ export default function PodiumLeaderboard() {
             </div>
 
             {/* PODIUM — แสดงเฉพาะคนที่ได้ 10/10 */}
-            <div className="max-w-5xl mx-auto mb-10 relative z-10">
+            <div className="max-w-5xl mx-auto mb-6 relative z-10">
                 {top3.length > 0 ? (
                     <>
-                        <div className="flex flex-col items-center gap-6 md:hidden">
-                            {top3[0] && <PodiumBlock player={top3[0]} rank={1} height="h-40" />}
+                        <div className="flex flex-col items-center gap-4 md:hidden">
+                            {top3[0] && <PodiumBlock player={top3[0]} rank={1} height="h-32" />}
                             <div className="flex justify-center gap-4 w-full">
-                                {top3[1] && <PodiumBlock player={top3[1]} rank={2} height="h-32" className="w-[48%]" />}
-                                {top3[2] && <PodiumBlock player={top3[2]} rank={3} height="h-32" className="w-[48%]" />}
+                                {top3[1] && <PodiumBlock player={top3[1]} rank={2} height="h-24" className="w-[48%]" />}
+                                {top3[2] && <PodiumBlock player={top3[2]} rank={3} height="h-24" className="w-[48%]" />}
                             </div>
                         </div>
 
                         <div className="hidden md:flex items-end justify-center gap-4">
-                            {top3[1] && <PodiumBlock player={top3[1]} rank={2} height="h-32" />}
-                            {top3[0] && <PodiumBlock player={top3[0]} rank={1} height="h-52" />}
-                            {top3[2] && <PodiumBlock player={top3[2]} rank={3} height="h-28" />}
+                            {top3[1] && <PodiumBlock player={top3[1]} rank={2} height="h-24" />}
+                            {top3[0] && <PodiumBlock player={top3[0]} rank={1} height="h-40" />}
+                            {top3[2] && <PodiumBlock player={top3[2]} rank={3} height="h-20" />}
                         </div>
 
                         {/* พื้นเวทีเรืองแสงใต้โพเดียม */}
@@ -600,10 +671,10 @@ export default function PodiumLeaderboard() {
                             style={{ background: "linear-gradient(90deg, transparent, rgba(250,204,21,0.5), transparent)", filter: "blur(2px)" }} />
                     </>
                 ) : (
-                    <div className="text-center py-10 bg-white/5 backdrop-blur border border-yellow-400/20 rounded-3xl">
+                    <div className="text-center py-7 bg-white/5 backdrop-blur border border-yellow-400/20 rounded-3xl">
                         <div className="text-5xl mb-3">🏆</div>
-                        <div className="text-lg font-bold text-yellow-300">ยังไม่มีผู้พิชิต 10/10</div>
-                        <div className="text-sm text-white/60 mt-1">ทำแบบทดสอบให้ได้เต็ม 10 คะแนน เพื่อขึ้นโพเดียมเป็นคนแรก!</div>
+                        <div className="text-lg font-bold text-yellow-300">{t("home.noWinnerTitle")}</div>
+                        <div className="text-sm text-white/60 mt-1">{t("home.noWinnerBody")}</div>
                     </div>
                 )}
             </div>
@@ -611,7 +682,7 @@ export default function PodiumLeaderboard() {
             {/* Other Rankings */}
             <div className="max-w-3xl mx-auto relative z-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4 px-1">
-                    <h3 className="text-xl font-bold flex items-center gap-2">⚔️ Other Rankings</h3>
+                    <h3 className="text-xl font-bold flex items-center gap-2">{t("home.otherRankings")}</h3>
 
                     <div className="flex items-center gap-3">
 
@@ -619,7 +690,7 @@ export default function PodiumLeaderboard() {
                         <div className="relative w-full md:w-72">
                             <input
                                 type="text"
-                                placeholder="🔍 ค้นหารหัสพนักงาน..."
+                                placeholder={t("home.searchPlaceholder")}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-2.5 text-sm placeholder:text-white/50 focus:outline-none focus:border-yellow-400 focus:shadow-[0_0_20px_rgba(250,204,21,0.3)] transition-all"
@@ -631,169 +702,47 @@ export default function PodiumLeaderboard() {
                     </div>
                 </div>
 
-                {/* History View */}
-                {searchedEmployeeId && employeeHistory.length > 0 ? (
-                    <div className="bg-white/5 backdrop-blur border border-yellow-400/40 rounded-3xl p-5 md:p-6 mb-6 shadow-[0_0_30px_rgba(250,204,21,0.15)]">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
-                            <div>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-full ring-2 ring-yellow-400/60 overflow-hidden flex-shrink-0 shadow-[0_0_15px_rgba(250,204,21,0.3)]">
-                                        <Avatar3D player={{ employeeId: searchedEmployeeId }} className="w-full h-full rounded-full" />
-                                    </div>
-                                    <div>
-                                        <div className="text-yellow-400 font-bold text-sm md:text-base">📜 ประวัติการทำแบบทดสอบ</div>
-                                        <span className="font-mono text-2xl font-bold">{searchedEmployeeId}</span>
-                                    </div>
-                                </div>
-                                <div className="mt-1">
-                                    <span className="text-sm text-white/60">ปัจจุบันอยู่อันดับ </span>
-                                    <span className="font-bold text-yellow-400 text-xl animate-pulse">
-                                        {searchedPlayer && rankOf(searchedPlayer) !== null ? `#${rankOf(searchedPlayer)}` : "-"}
-                                    </span>
-                                </div>
+                {/* min-h กันหน้าจอกระโดด ตอนสลับระหว่างลิสต์เต็ม ↔ ผลค้นหา (ที่มีจำนวนแถวไม่เท่ากัน) */}
+                <div className="min-h-[520px] md:min-h-[640px]">
+                    {/* History View — การ์ดแบบเดียวกับ Other Rankings เพื่อความสม่ำเสมอทั้งหน้า */}
+                    {searchedEmployeeId && employeeHistory.length > 0 ? (
+                        <div className="mb-6">
+                            <div className="space-y-2">
+                                {employeeHistory.map((item, idx) => (
+                                    <RankRow key={idx} player={item} rank={rankOf(item)} delay={idx} />
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="space-y-2">
+                                {paginatedOthers.length > 0 ? (
+                                    paginatedOthers.map((p, idx) => (
+                                        <RankRow key={p.employeeId} player={p} rank={rankOf(p)} delay={idx} />
+                                    ))
+                                ) : (
+                                    <div className="text-center py-8 text-white/50">{t("home.noSearchResult")}</div>
+                                )}
                             </div>
 
-                        </div>
-
-                        {/* แจ้งเตือนถ้ายังไม่ผ่าน */}
-                        {Math.max(...employeeHistory.map(h => h.score)) < 10 && (
-                            <div className="mb-4 flex items-center gap-3 bg-rose-500/10 border border-rose-400/30 rounded-2xl px-4 py-3 text-sm">
-                                <span className="text-xl">💪</span>
-                                <div>
-                                    <span className="text-rose-300 font-semibold">ยังไม่ผ่าน</span>
-                                    <span className="text-white/70"> — ต้องได้ 10/10 จึงจะผ่าน สามารถทำแบบทดสอบใหม่ได้ไม่จำกัดจำนวนครั้ง</span>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="space-y-2">
-                            {employeeHistory.map((item, index) => (
-                                <div key={index} className="flex flex-col md:flex-row md:items-center justify-between bg-white/5 hover:bg-white/10 transition rounded-2xl px-4 py-3 gap-y-1">
-                                    <div className="flex items-center gap-3">
-
-                                        <div className="text-sm text-white/70">{formatDate(item.date)}</div>
-                                    </div>
-                                    <div className="flex items-center gap-4 md:gap-6 font-mono text-sm md:text-base">
-                                        <StatusBadge score={item.score} size="sm" />
-                                        <div>
-                                            {item.score === 10 && <span className="mr-1">⭐</span>}
-                                            <span className={`font-bold ${item.score === 10 ? "text-emerald-300" : "text-rose-300"}`}>{item.score}</span>
-                                            <span className="text-white/40">/10</span>
-                                        </div>
-                                        <div className="text-white/70">⏱ {item.time}s</div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        <div className="space-y-2">
-                            {paginatedOthers.length > 0 ? (
-                                paginatedOthers.map((p, idx) => {
-                                    const rank = rankOf(p);
-                                    const isTop10 = rank !== null && rank <= 10;
-                                    const isPass = p.score === 10;
-
-                                    return (
-                                        <div key={p.employeeId}
-                                            className={`flex items-center justify-between backdrop-blur transition-all duration-300 rounded-2xl px-4 py-3 md:px-5 md:py-4 text-sm md:text-base
-                                                hover:scale-[1.02]
-                                                ${isPass
-                                                    ? "hover:shadow-[0_0_20px_rgba(16,185,129,0.25)] " + (isTop10
-                                                        ? "bg-gradient-to-r from-emerald-500/10 via-purple-500/10 to-white/5 border border-emerald-400/25 hover:bg-emerald-500/10"
-                                                        : "bg-white/5 border border-emerald-400/15 hover:bg-white/10")
-                                                    : "bg-white/[0.03] border border-rose-400/15 hover:bg-rose-500/[0.07] hover:shadow-[0_0_20px_rgba(244,63,94,0.15)]"}`}
-                                            style={{
-                                                opacity: mounted ? 1 : 0,
-                                                transform: mounted ? "translateX(0)" : "translateX(-20px)",
-                                                transition: `all 0.4s ease ${Math.min(idx * 0.04, 0.6)}s`,
-                                            }}>
-                                            <div className="w-10 md:w-12 flex-shrink-0">
-                                                <span className={`font-mono font-bold text-lg md:text-xl ${isTop10 ? "text-yellow-400" : "text-white/70"}`}>{rank !== null ? `#${rank}` : "-"}</span>
-                                            </div>
-
-                                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                <div className={`w-9 h-9 md:w-11 md:h-11 rounded-full ring-2 overflow-hidden flex-shrink-0
-                                                    ${isPass ? "ring-emerald-400/50" : "ring-white/15 grayscale-[35%] opacity-90"}`}>
-                                                    <Avatar3D player={p} className="w-full h-full rounded-full" />
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className={`font-semibold truncate ${!isPass ? "text-white/80" : ""}`}>
-                                                        {p.employeeId}
-                                                        {isTop10 && <span className="ml-1.5 text-xs">🔥</span>}
-                                                    </div>
-                                                    <div className="mt-0.5 flex items-center gap-2">
-                                                        <StatusBadge score={p.score} size="sm" />
-                                                        {!isPass && (
-                                                            <span className="hidden md:inline text-[10px] text-white/40">
-                                                                ทำแบบทดสอบใหม่เพื่อผ่าน 💪
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-4 md:gap-6 text-right">
-                                                <div>
-                                                    <span className={`font-bold ${isPass ? "text-emerald-300" : "text-rose-300"}`}>{p.score}</span>
-                                                    <span className="text-white/40">/10</span>
-                                                </div>
-                                                <div className="text-white/60 w-12 md:w-14 text-right">{p.time}s</div>
-                                            </div>
-
-                                            <div className="hidden md:block text-right text-sm text-white/70 w-28 flex-shrink-0">
-                                                {formatDate(p.date)}
-                                            </div>
-                                        </div>
-                                    );
-                                })
-                            ) : (
-                                <div className="text-center py-8 text-white/50">🔍 ไม่พบรหัสพนักงานที่ค้นหา</div>
-                            )}
-                        </div>
-
-                        <PaginationControls />
-                    </>
-                )}
+                            <PaginationControls />
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* ==================== FOOTER ==================== */}
-            <footer className="relative z-10 mt-16 md:mt-24 pb-10">
+            <footer className="relative z-10 mt-8 md:mt-10  ">
                 {/* aurora glow ด้านหลัง footer */}
-                <div className="absolute inset-x-0 bottom-0 h-72 pointer-events-none overflow-hidden" aria-hidden="true">
-                    <div className="absolute bottom-[-60px] left-[10%] w-[420px] h-[220px] rounded-full blur-3xl animate-aurora"
-                        style={{ background: "radial-gradient(ellipse, rgba(168,85,247,0.35), transparent 70%)" }} />
-                    <div className="absolute bottom-[-40px] right-[8%] w-[380px] h-[200px] rounded-full blur-3xl animate-aurora"
-                        style={{ background: "radial-gradient(ellipse, rgba(250,204,21,0.22), transparent 70%)", animationDelay: "2.5s" }} />
-                    <div className="absolute bottom-[-80px] left-[45%] w-[320px] h-[200px] rounded-full blur-3xl animate-aurora"
-                        style={{ background: "radial-gradient(ellipse, rgba(16,185,129,0.2), transparent 70%)", animationDelay: "4s" }} />
+                <div className="absolute inset-x-0 bottom-0 h-40 pointer-events-none overflow-hidden" aria-hidden="true">
+                    <div className="absolute bottom-[-60px] left-[10%] w-[320px] h-[160px] rounded-full blur-3xl animate-aurora"
+                        style={{ background: "radial-gradient(ellipse, rgba(168,85,247,0.3), transparent 70%)" }} />
+                    <div className="absolute bottom-[-40px] right-[8%] w-[300px] h-[150px] rounded-full blur-3xl animate-aurora"
+                        style={{ background: "radial-gradient(ellipse, rgba(250,204,21,0.18), transparent 70%)", animationDelay: "2.5s" }} />
                 </div>
 
-                {/* เส้นแบ่งเรืองแสง */}
-                <div className="max-w-3xl mx-auto mb-10 flex items-center gap-3 px-4">
-                    <div className="flex-1 h-[2px] rounded-full animate-wave-line"
-                        style={{ background: "linear-gradient(90deg, transparent, rgba(250,204,21,0.8))" }} />
-                    <span className="text-yellow-300 animate-twinkle text-lg">✦</span>
-                    <span className="text-purple-300 animate-twinkle text-sm" style={{ animationDelay: "0.5s" }}>✧</span>
-                    <span className="text-yellow-300 animate-twinkle text-lg" style={{ animationDelay: "1s" }}>✦</span>
-                    <div className="flex-1 h-[2px] rounded-full animate-wave-line"
-                        style={{ background: "linear-gradient(90deg, rgba(250,204,21,0.8), transparent)", animationDelay: "1.5s" }} />
-                </div>
-
-                {/* การ์ดกลาง footer พร้อมขอบไฟวิ่ง */}
-     
-                {/* บรรทัดล่างสุด */}
-                <div className="mt-10 text-center relative">
-                    <div className="flex items-center justify-center gap-2 text-xs md:text-sm text-white/40">
-                        <span className="animate-twinkle text-yellow-400/60">✦</span>
-                        <span>Quiz Leaderboard • Hall of Fame</span>
-                        <span className="animate-twinkle text-yellow-400/60" style={{ animationDelay: "0.8s" }}>✦</span>
-                    </div>
-                    <div className="mt-2 text-[10px] md:text-xs text-white/25">
-                        อัปเดตอันดับแบบเรียลไทม์ทุกครั้งที่โหลดหน้า
-                    </div>
-                </div>
+      
+         
             </footer>
         </div>
     );

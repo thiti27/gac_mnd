@@ -14,6 +14,7 @@
     "@supabase/supabase-js": "^2.110.2",
     "@tailwindcss/vite": "^4.3.2",
     "canvas-confetti": "^1.9.4",
+    "exceljs": "^4.4.0",
     "formik": "^2.4.9",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.23.0",

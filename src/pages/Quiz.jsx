@@ -1,4 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useQuizProgress } from "../context/QuizProgressContext";
+import { useLanguage } from "../context/LanguageContext";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import * as Yup from "yup";
 import Select from "react-select";
@@ -108,8 +111,10 @@ function shuffleArray(array) {
 
     return newArray;
 }
-const choiceLabels = ["ก", "ข", "ค", "ง"];
 export default function Quiz() {
+    const [searchParams] = useSearchParams();
+    const { setInProgress, resetToken } = useQuizProgress();
+    const { lang, t } = useLanguage();
     const [userInfo, setUserInfo] = useState(null);
     const [answers, setAnswers] = useState({});
     const [comment, setComment] = useState("");
@@ -146,16 +151,20 @@ export default function Quiz() {
 
     const validationSchema = Yup.object({
         employeeId: Yup.string()
-            .required("กรุณากรอกรหัสพนักงาน")
+            .required(t("quiz.employeeIdRequired"))
             .test(
                 "not-blank",
-                "กรุณากรอกรหัสพนักงาน",
+                t("quiz.employeeIdRequired"),
                 (value) => !!value && value.trim().length > 0
             ),
     });
 
+    // เติมรหัสพนักงานให้อัตโนมัติจาก: 1) เคยกรอกไปแล้วในรอบนี้ (เช่นกด "ทำแบบทดสอบใหม่")
+    // หรือ 2) มาจากลิงก์ที่แนบ ?employeeId=... มา (เช่นคลิกการ์ด Not Pass ใน Leaderboard)
+    // ไม่ว่าจะทางไหนก็แค่ "เติมให้" เท่านั้น ผู้ใช้ยังต้องกดเริ่มทำแบบทดสอบเอง
+    const prefillEmployeeId = (searchParams.get("employeeId") || "").trim().toUpperCase();
     const initialUserInfo = {
-        employeeId: "",
+        employeeId: userInfo?.employeeId ?? prefillEmployeeId,
         fullName: "",
         department: "",
     };
@@ -173,6 +182,36 @@ export default function Quiz() {
         return () => clearInterval(timerRef.current);
     }, [isStarted, isSubmitted, showComment]);
 
+    // ===== รายงานสถานะ "กำลังทำข้อสอบค้างอยู่ไหม" ให้ Navbar รู้ =====
+    // เพื่อเด้ง popup ยืนยันตอนกดเมนู Quiz ซ้ำระหว่างทำข้อสอบ
+    useEffect(() => {
+        const inProgress = isStarted && !isSubmitted && !showComment;
+        setInProgress(inProgress);
+        return () => setInProgress(false);
+    }, [isStarted, isSubmitted, showComment, setInProgress]);
+
+    // ===== รับสัญญาณ "เริ่มใหม่" จาก Navbar (กด "ตกลง" ใน popup ยืนยัน) =====
+    // resetToken เปลี่ยนค่าทุกครั้งที่ Navbar สั่งรีเซ็ต ข้าม effect แรกตอน mount
+    const isFirstResetSignal = useRef(true);
+    useEffect(() => {
+        if (isFirstResetSignal.current) {
+            isFirstResetSignal.current = false;
+            return;
+        }
+        setIsStarted(false);
+        setIsSubmitted(false);
+        setAnswers({});
+        setComment("");
+        setResult(null);
+        setSubmitError("");
+        setElapsedTime(0);
+        setShowComment(false);
+        setPendingResult(null);
+        setCommentError("");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        // ไม่ล้าง userInfo → ฟอร์มยังเติมรหัสพนักงานเดิมให้ ตามที่ต้องการ
+    }, [resetToken]);
+
     const handleStartQuiz = async (values) => {
         // trim + toUpperCase กัน " abc123 " / "abc123" / "ABC123" ถูกนับเป็นคนละคน
         const employeeId = values.employeeId.trim().toUpperCase();
@@ -184,13 +223,26 @@ export default function Quiz() {
                 return;
             }
 
+            // รหัสพนักงานเดิม + เคยเริ่มไปแล้ว = แค่กลับมาทำต่อ (เช่นกด "กลับไปแก้ไขรหัสพนักงาน"
+            // เพื่อทวนรหัสแล้วกลับมา) ไม่ใช่เริ่มรอบใหม่ → ไม่รีเซ็ตคำตอบ/เวลาที่ทำไปแล้ว
+            const isResuming = userInfo !== null && employeeId === userInfo.employeeId;
+
             setUserInfo({ ...values, employeeId });
             setIsStarted(true);
-            setStartTime(Date.now());
-            setElapsedTime(0);
+
+            if (isResuming) {
+                // เลื่อน startTime ชดเชยช่วงที่หยุดพักไป กันไม่ให้เวลาที่หยุดไปดูรหัส
+                // ถูกนับรวมเป็นเวลาที่ใช้ทำข้อสอบ (elapsedTime ที่แสดงอยู่ยังถูกต้องอยู่แล้ว)
+                setStartTime(Date.now() - elapsedTime * 1000);
+            } else {
+                setStartTime(Date.now());
+                setElapsedTime(0);
+            }
+
+            window.scrollTo({ top: 0, behavior: "smooth" });
         } catch (error) {
             console.error("ตรวจสอบสถานะรหัสพนักงานล้มเหลว:", error);
-            alert("เกิดข้อผิดพลาดในการตรวจสอบข้อมูล กรุณาลองใหม่อีกครั้ง");
+            alert(t("quiz.checkFailedAlert"));
         } finally {
             setIsChecking(false);
         }
@@ -199,6 +251,56 @@ export default function Quiz() {
     const handleAnswer = (questionId, optionId) => {
         setAnswers(prev => ({ ...prev, [questionId]: optionId }));
         setSubmitError("");
+    };
+
+    // กด "กลับไปแก้ไขรหัสพนักงาน" ระหว่างทำข้อสอบ → แค่พักไปทวน/แก้รหัสชั่วคราว
+    // ไม่ล้างคำตอบหรือเวลาที่ทำไปแล้ว (ตัวจับเวลาจะหยุดเดินเองเพราะ isStarted เป็น false
+    // แล้วกลับมาเดินต่อให้ถูกต้องตอนกด "ถัดไป" อีกครั้ง — ดู isResuming ใน handleStartQuiz)
+    const handleBackToEmployeeId = () => {
+        setIsStarted(false);
+        setSubmitError("");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    // กด "คลิกเพื่อทำแบบทดสอบอีกครั้ง" จากหน้าผลคะแนน → ข้ามหน้ากรอกฟอร์ม
+    // ใช้รหัสพนักงานเดิมที่มีอยู่แล้วเช็คแล้วเข้าหน้า Quiz ทันที
+    const handleRetryQuiz = async () => {
+        const employeeId = userInfo?.employeeId;
+        if (!employeeId) {
+            resetQuiz();
+            return;
+        }
+
+        setIsChecking(true);
+        try {
+            const alreadyPassed = await checkAlreadyPassed(employeeId);
+
+            // reset ค่าที่เกี่ยวกับรอบทำแบบทดสอบก่อนหน้าทุกครั้ง ไม่ว่าจะผ่านหรือไม่
+            setAnswers({});
+            setComment("");
+            setSubmitError("");
+            setShowComment(false);
+            setPendingResult(null);
+            setCommentError("");
+            setResult(null);
+            setIsSubmitted(false);
+
+            if (alreadyPassed) {
+                setIsStarted(false);
+                setShowAlreadyPassed(true);
+                return;
+            }
+
+            setIsStarted(true);
+            setStartTime(Date.now());
+            setElapsedTime(0);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch (error) {
+            console.error("ตรวจสอบสถานะรหัสพนักงานล้มเหลว:", error);
+            alert(t("quiz.checkFailedAlert"));
+        } finally {
+            setIsChecking(false);
+        }
     };
 
     // ===== Progress: นับเฉพาะข้อสอบ 10 ข้อ (Comment ไม่นับ) =====
@@ -212,7 +314,7 @@ export default function Quiz() {
 
         if (unanswered.length > 0) {
             const firstUnansweredId = unanswered[0];
-            setSubmitError("กรุณาตอบคำถามให้ครบทุกข้อ");
+            setSubmitError(t("quiz.answerAllRequired"));
             const ref = questionRefs.current[firstUnansweredId];
             if (ref) ref.scrollIntoView({ behavior: "smooth", block: "center" });
             return false;
@@ -246,7 +348,7 @@ export default function Quiz() {
     // ===== ขั้นที่ 2: กด "ส่งความคิดเห็นและดูผลคะแนน" → Save Google Sheet ครั้งเดียว → แสดงผล =====
     const handleSubmitComment = async () => {
         if (!comment.trim()) {
-            setCommentError("กรุณาแสดงความคิดเห็น");
+            setCommentError(t("quiz.commentRequired"));
             return;
         }
         setCommentError("");
@@ -287,7 +389,7 @@ export default function Quiz() {
             }
         } catch (error) {
             console.error("ส่งข้อมูลไป Google Sheet ล้มเหลว:", error);
-            alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง");
+            alert(t("quiz.saveFailedAlert"));
         } finally {
             setIsLoading(false);
         }
@@ -328,7 +430,7 @@ export default function Quiz() {
     };
 
     return (
-        <div className="min-h-screen text-white p-6 md:p-8"
+        <div className="min-h-screen text-white p-4 md:p-8"
             style={{ background: "radial-gradient(ellipse 80% 50% at 50% -10%, #2d1b69 0%, #0F0A1F 60%)" }}>
 
             {/* ===== CSS Animations ===== */}
@@ -378,76 +480,26 @@ export default function Quiz() {
             `}</style>
 
             <div className="max-w-3xl mx-auto">
-                <h1 className="text-4xl md:text-5xl font-black text-center mb-2 anim-shimmer">Quiz</h1>
-                <p className="text-center text-white/60 mb-8">แบบทดสอบ M&D and Compliance</p>
+                <h1 className="text-4xl md:text-5xl font-black text-center mb-2 anim-shimmer">{t("quiz.title")}</h1>
+                <p className="text-center text-white/60 mb-8">{t("quiz.subtitle")}</p>
 
-                {/* กติกา — แสดงเฉพาะก่อนเริ่ม */}
-                {/* กติกา */}
+                {/* กติกา — แสดงเฉพาะก่อนเริ่ม เป็น banner บางๆ ไม่ใช่การ์ดแบบเดียวกับฟอร์มด้านล่าง */}
                 {!isStarted && (
-                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 md:p-8 mb-6 backdrop-blur-sm anim-fade-up">
-                        <h2 className="text-2xl font-bold flex items-center gap-2 mb-6">
-                            📋 กติกาการทำแบบทดสอบ
-                        </h2>
-
-                        <div className="space-y-3 text-white/80">
-                            <div className="flex items-center gap-3">
-                                <span className="text-lg">📝</span>
-                                <span>
-                                    แบบทดสอบ <span className="font-bold text-yellow-400">10 ข้อ</span> (ข้อละ <span className="font-bold text-yellow-400">1 คะแนน</span>)
-                                </span>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                                <span className="text-lg">✅</span>
-                                <span>
-                                    ต้องตอบถูก <span className="font-bold text-emerald-400">ครบ 10 ข้อ (10/10)</span> จึงจะผ่าน
-                                </span>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                                <span className="text-lg">🔄</span>
-                                <span>
-                                    ทำแบบทดสอบใหม่ได้ <span className="font-bold text-sky-400">ไม่จำกัดจำนวนครั้ง</span>
-
-                                </span>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                                <span className="text-lg">⏱️</span>
-                                <span>จับเวลาเฉพาะการทำข้อสอบ <span className="font-semibold text-white">ไม่นับเวลาแสดงความคิดเห็น</span></span>
-                            </div>
-                        </div>
-
-                        <div className="mt-6 pt-5 border-t border-white/10">
-                            <div className="flex flex-wrap items-center gap-2 text-sm">
-                                <span className="font-semibold text-white">🏆 การจัดอันดับ</span>
-
-                                <span className="px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300">
-                                    ตอบถูกครบ 10 ข้อ
-                                </span>
-
-                                <span className="text-white/40">→</span>
-
-                                <span className="px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-300">
-                                    ใช้เวลาน้อยที่สุด
-                                </span>
-
-
-                            </div>
-
-
-                        </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-center text-center gap-1.5 sm:gap-3 mb-4 px-4 py-3 rounded-2xl bg-gradient-to-r from-yellow-500/10 via-amber-500/10 to-emerald-500/10 border border-yellow-400/20 text-sm anim-fade-up">
+                        <span className="font-bold text-emerald-300 flex-shrink-0">{t("quiz.ruleMustPass")}</span>
+                        <span className="hidden sm:inline text-white/20">|</span>
+                        <span className="text-white/70">{t("quiz.ruleRanking")}</span>
                     </div>
                 )}
 
-                {/* ฟอร์มข้อมูลพนักงาน */}
+                {/* ฟอร์มข้อมูลพนักงาน — เน้นช่องกรอกรหัสเป็นจุดเด่นเดียวของการ์ด ไม่มีองค์ประกอบรอง */}
                 {!isStarted && (
                     <div
                         className="bg-white/5 border border-white/10 rounded-3xl p-6 md:p-8 backdrop-blur-sm anim-fade-up"
                         style={{ animationDelay: "0.1s" }}
                     >
-                        <h2 className="text-2xl font-bold mb-5 flex items-center gap-2">
-                            👤 กรอกข้อมูลพนักงาน
+                        <h2 className="text-center text-white/70 text-sm font-medium mb-4">
+                            {t("quiz.formHeading")}
                         </h2>
 
                         <Formik
@@ -457,51 +509,39 @@ export default function Quiz() {
                         >
                             {({ errors, touched }) => (
                                 <Form>
-                                    <div>
-                                        <label className="block text-sm font-medium text-white/80 mb-2">
-                                            รหัสพนักงาน <span className="text-red-400">*</span>
-                                        </label>
+                                    <Field name="employeeId">
+                                        {({ field, form }) => (
+                                            <input
+                                                {...field}
+                                                type="text"
+                                                placeholder={t("quiz.employeeIdPlaceholder")}
+                                                autoFocus
+                                                onChange={(e) => {
+                                                    // พิมพ์ตัวเล็กแปลงเป็นตัวใหญ่ + ตัดช่องว่างทั้งหมดออกอัตโนมัติ
+                                                    // ระหว่างพิมพ์ ป้องกันปัญหาตัวพิมพ์/whitespace ตั้งแต่ต้นทาง
+                                                    const cleaned = e.target.value.toUpperCase().replace(/\s+/g, "");
+                                                    form.setFieldValue("employeeId", cleaned);
+                                                }}
+                                                className={`w-full rounded-2xl bg-white/10 border-2 px-4 py-5 text-center text-2xl md:text-3xl font-black tracking-widest text-yellow-300 placeholder:text-white/20 placeholder:font-normal placeholder:tracking-normal placeholder:text-base transition-all focus:outline-none focus:ring-4 focus:ring-yellow-400/20 focus:border-yellow-400 ${errors.employeeId && touched.employeeId
+                                                    ? "border-red-500"
+                                                    : "border-white/20"
+                                                    }`}
+                                            />
+                                        )}
+                                    </Field>
 
-                                        <Field name="employeeId">
-                                            {({ field, form }) => (
-                                                <input
-                                                    {...field}
-                                                    type="text"
-                                                    placeholder="รหัสพนักงาน"
-                                                    onChange={(e) => {
-                                                        // พิมพ์ตัวเล็กแปลงเป็นตัวใหญ่ + ตัดช่องว่างทั้งหมดออกอัตโนมัติ
-                                                        // ระหว่างพิมพ์ ป้องกันปัญหาตัวพิมพ์/whitespace ตั้งแต่ต้นทาง
-                                                        const cleaned = e.target.value.toUpperCase().replace(/\s+/g, "");
-                                                        form.setFieldValue("employeeId", cleaned);
-                                                    }}
-                                                    className={`w-full rounded-2xl bg-white/10 border px-4 py-3 text-white placeholder:text-white/40 transition-all focus:outline-none focus:ring-2 focus:ring-yellow-400/30 focus:border-yellow-400 ${errors.employeeId && touched.employeeId
-                                                        ? "border-red-500"
-                                                        : "border-white/20"
-                                                        }`}
-                                                />
-                                            )}
-                                        </Field>
-
-                                        <ErrorMessage
-                                            name="employeeId"
-                                            component="div"
-                                            className="text-red-400 text-sm mt-2"
-                                        />
-
-                                        <p className="mt-3 text-sm text-white/60">
-                                            ⚠️ โปรดตรวจสอบ
-                                            <span className="font-semibold text-yellow-300"> รหัสพนักงาน </span>
-                                            ให้ถูกต้อง เพื่อใช้ในการ
-                                            <span className="font-semibold text-white"> บันทึกผลการทดสอบและจัดอันดับ</span>
-                                        </p>
-                                    </div>
+                                    <ErrorMessage
+                                        name="employeeId"
+                                        component="div"
+                                        className="text-red-400 text-sm mt-2 text-center"
+                                    />
 
                                     <button
                                         type="submit"
                                         disabled={isChecking}
-                                        className="mt-8 w-full rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-3.5 transition-all duration-300 hover:scale-[1.02] shadow-lg shadow-yellow-500/20 disabled:opacity-60 disabled:hover:scale-100"
+                                        className="mt-6 w-full rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-3.5 transition-all duration-300 hover:scale-[1.02] shadow-lg shadow-yellow-500/20 disabled:opacity-60 disabled:hover:scale-100"
                                     >
-                                        {isChecking ? "⏳ กำลังตรวจสอบ..." : "🚀 เริ่มทำแบบทดสอบ"}
+                                        {isChecking ? t("quiz.checking") : t("quiz.startQuiz")}
                                     </button>
                                 </Form>
                             )}
@@ -511,27 +551,23 @@ export default function Quiz() {
                 {/* ===== แบบทดสอบ (ข้อ 1-10) ===== */}
                 {isStarted && !isSubmitted && !showComment && (
                     <div className="space-y-8">
-                        {/* Sticky Status Bar */}
-                        <div className="sticky top-16 z-40 bg-[#0F0A1F]/80 backdrop-blur pt-2 pb-3 -mx-1 px-1">
-                            <div className="bg-[#1F1F2E] border border-white/20 rounded-2xl px-4 py-3 shadow-lg">
-                                <div className="flex justify-between items-center mb-2 text-sm">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-yellow-400">⏱</span>
-                                        <span className="font-mono font-bold">
-                                            {Math.floor(elapsedTime / 60)}:{(elapsedTime % 60).toString().padStart(2, '0')}
-                                        </span>
-                                    </div>
-                                    <div className="font-medium">
-                                        {answeredCount}/{totalQuestions}
-                                    </div>
+                        {/* Status Bar — ไม่ float/sticky แล้ว เลื่อนไปกับหน้าปกติ อยากเช็คเวลาก็เลื่อนขึ้นไปดู */}
+                        <div className="bg-[#1F1F2E] border border-white/20 rounded-2xl px-4 py-2.5 shadow-lg">
+                            <div className="flex items-center gap-3 text-sm">
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <span className="text-yellow-400">⏱</span>
+                                    <span className="font-mono font-bold">
+                                        {Math.floor(elapsedTime / 60)}:{(elapsedTime % 60).toString().padStart(2, '0')}
+                                    </span>
                                 </div>
 
-                                <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
-                                    <div className="h-2.5 bg-gradient-to-r from-yellow-400 to-emerald-400 transition-all duration-500" style={{ width: `${progress}%` }} />
+                                <div className="flex-1 bg-white/10 rounded-full h-1.5 overflow-hidden">
+                                    <div className="h-1.5 bg-gradient-to-r from-yellow-400 to-emerald-400 transition-all duration-500" style={{ width: `${progress}%` }} />
                                 </div>
 
-                                <div className="text-[10px] text-white/50 mt-1 text-right">
-                                    {progress}% สำเร็จ {progress === 100 && "🎉 ครบแล้ว! กดส่งคำตอบได้เลย"}
+                                <div className={`flex-shrink-0 font-medium flex items-center gap-1 ${progress === 100 ? "text-emerald-400" : ""}`}>
+                                    {answeredCount}/{totalQuestions}
+                                    {progress === 100 && <span>🎉</span>}
                                 </div>
                             </div>
                         </div>
@@ -539,25 +575,28 @@ export default function Quiz() {
                         {/* คำถาม (เฉพาะข้อสอบ ไม่รวม Comment) */}
                         {quizQuestions.map((q, index) => (
                             <div key={q.id} ref={el => questionRefs.current[q.id] = el}
-                                className={`bg-white/5 border rounded-3xl p-6 transition-all duration-300 anim-fade-up
+                                className={`scroll-mt-4 bg-white/5 border rounded-3xl overflow-hidden transition-all duration-300 anim-fade-up
                                     ${answers[q.id] ? "border-emerald-400/40 shadow-[0_0_15px_rgba(16,185,129,0.1)]" : "border-white/10"}`}
                                 style={{ animationDelay: `${Math.min(index * 0.05, 0.4)}s` }}>
-                                <div className="flex gap-3 mb-4">
-                                    <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-bold transition-all
-                                        ${answers[q.id] ? "bg-emerald-400 text-black scale-110" : "bg-yellow-400/10 text-yellow-400"}`}>
+
+                                {/* โซนคำถาม — แยกพื้นหลังเข้มกว่าตัวเลือกด้านล่างชัดเจน */}
+                                <div className="flex gap-3 items-start bg-black/20 px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
+                                    <div className={`w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center font-bold text-sm transition-all
+                                        ${answers[q.id] ? "bg-emerald-400 text-black scale-110" : "bg-yellow-400 text-black"}`}>
                                         {answers[q.id] ? "✓" : index + 1}
                                     </div>
-                                    <h3 className="font-semibold text-lg">{q.question}</h3>
+                                    <h3 className="font-bold text-lg md:text-xl leading-relaxed pt-1">{q.question[lang]}</h3>
                                 </div>
 
-                                <div className="space-y-3">
+                                {/* โซนตัวเลือกคำตอบ */}
+                                <div className="p-4 md:p-6 space-y-3">
                                     {q.options.map((option, index) => (
                                         <label
                                             key={option.id}
-                                            className={`flex items-center gap-4 p-4 rounded-2xl cursor-pointer border transition-all duration-200
+                                            className={`flex items-center gap-3 p-3 md:gap-4 md:p-4 rounded-2xl cursor-pointer border transition-all duration-200
         ${answers[q.id] === option.id
                                                     ? "bg-yellow-400/15 border-yellow-400 scale-[1.01] shadow-[0_0_15px_rgba(250,204,21,0.15)]"
-                                                    : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/30 hover:translate-x-1"
+                                                    : "bg-white/[0.08] border-white/15 hover:bg-white/[0.14] hover:border-white/30 hover:translate-x-1"
                                                 }`}
                                         >
                                             <input
@@ -568,11 +607,12 @@ export default function Quiz() {
                                             />
 
                                             <div className="flex items-center gap-3">
-                                                <span className="flex items-center justify-center w-8 h-8 rounded-full bg-white/10 text-yellow-300 font-bold">
-                                                    {choiceLabels[index]}
+                                                <span className={`flex items-center justify-center w-8 h-8 rounded-full font-bold transition-all
+                                                    ${answers[q.id] === option.id ? "bg-yellow-400 text-black" : "bg-white/10 text-yellow-300"}`}>
+                                                    {t("quiz.choiceLabels")[index]}
                                                 </span>
 
-                                                <span>{option.text}</span>
+                                                <span className="text-base leading-relaxed">{option.text[lang]}</span>
                                             </div>
                                         </label>
                                     ))}
@@ -586,10 +626,19 @@ export default function Quiz() {
                             </div>
                         )}
 
-                        <button onClick={handleSubmitQuiz}
-                            className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] shadow-[0_0_25px_rgba(16,185,129,0.3)]">
-                            📨 ส่งคำตอบ
-                        </button>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleBackToEmployeeId}
+                                className="flex-shrink-0 px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02]"
+                            >
+                                {t("quiz.backToEmployeeId")}
+                            </button>
+
+                            <button onClick={handleSubmitQuiz}
+                                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] shadow-[0_0_25px_rgba(16,185,129,0.3)]">
+                                {t("quiz.next")}
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -597,94 +646,91 @@ export default function Quiz() {
                 {isStarted && !isSubmitted && showComment && (
                     <div className="anim-pop">
                         <div className="bg-white/5 border border-yellow-400/40 rounded-3xl p-6 md:p-10 anim-glow">
-                            <div className="text-center mb-6">
-                                <div className="text-6xl mb-3 anim-bounce inline-block">💬</div>
-                                <h2 className="text-2xl md:text-3xl font-black mb-2">ก่อนดูผลคะแนน</h2>
-                                <p className="text-white/70">
-                                    ช่วยตอบอีก 1 คำถาม <span className="text-yellow-400">(ไม่จับเวลา)</span>
-                                </p>
-                                <p className="text-emerald-400 text-sm mt-1">✨ ความคิดเห็นของคุณจะช่วยพัฒนาองค์กร</p>
+                            <div className="flex items-center gap-4 mb-6">
+                                <span className="inline-block text-xs font-semibold text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded-full px-2.5 py-0.5">
+                                    {t("quiz.notTimed")}
+                                </span>
                             </div>
 
-                            {/* บอกใบ้ว่าคะแนนพร้อมแล้ว สร้างความตื่นเต้น */}
-                            <div className="flex items-center justify-center gap-2 mb-6 text-sm text-white/50">
-                                <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                                คะแนนของคุณถูกคำนวณเรียบร้อยแล้ว รอเปิดเผยอยู่... 🔒
-                            </div>
-
-                            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-4">
-                                <h3 className="font-semibold text-lg mb-3 flex gap-2">
-                                    <span className="text-yellow-400">Q:</span>
-                                    การเป็น "แบบอย่างที่ดี" ในองค์กรภายใต้หลักการ GAC ควรได้รับการส่งเสริมหรือพัฒนาในรูปแบบใด
+                            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 md:p-6 mb-6">
+                                <h3 className="font-semibold text-base md:text-lg mb-4 flex gap-2 leading-relaxed">
+                                    <span className="text-yellow-400 flex-shrink-0">Q:</span>
+                                    <span>{t("quiz.commentQuestion")}</span>
                                 </h3>
                                 <textarea
                                     value={comment}
                                     onChange={(e) => { setComment(e.target.value); setCommentError(""); }}
-                                    placeholder="กรุณาแบ่งปันความคิดเห็นของคุณ..."
-                                    className={`w-full h-36 bg-white/10 border rounded-2xl p-4 resize-y focus:outline-none focus:border-yellow-400 focus:shadow-[0_0_20px_rgba(250,204,21,0.2)] transition-all
+                                    placeholder={t("quiz.commentPlaceholder")}
+                                    className={`w-full h-36 bg-white/10 border rounded-2xl p-4 resize-y leading-relaxed focus:outline-none focus:border-yellow-400 focus:shadow-[0_0_20px_rgba(250,204,21,0.2)] transition-all
                                         ${commentError ? "border-red-500" : "border-white/20"}`}
                                 />
                                 {commentError && (
-                                    <div className="anim-shake text-red-400 text-sm mt-2 flex items-center gap-1">
+                                    <div className="anim-shake text-red-400 text-sm mt-3 flex items-center gap-1">
                                         ⚠️ {commentError}
                                     </div>
                                 )}
                             </div>
 
-                            <button onClick={handleSubmitComment} disabled={isLoading}
-                                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100 shadow-[0_0_25px_rgba(250,204,21,0.3)]">
-                                🎁 ส่งความคิดเห็นและดูผลคะแนน
-                            </button>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowComment(false)}
+                                    disabled={isLoading}
+                                    className="flex-shrink-0 px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
+                                >
+                                    {t("quiz.backToEditAnswers")}
+                                </button>
+
+                                <button onClick={handleSubmitComment} disabled={isLoading}
+                                    className="flex-1 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100 shadow-[0_0_25px_rgba(250,204,21,0.3)]">
+                                    {t("quiz.submitComment")}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
 
                 {/* ===== ผลลัพธ์ ===== */}
                 {isSubmitted && result && (
-                    <div className="bg-white/5 border border-white/10 rounded-3xl p-8 text-center anim-pop">
-                        <h2 className="text-3xl font-bold mb-2">ทำแบบทดสอบเสร็จสิ้น!</h2>
-                        <p className="text-white/60 mb-6">ขอบคุณที่ร่วมทำแบบทดสอบและแสดงความคิดเห็น</p>
+                    <div className="bg-white/5 border border-white/10 rounded-3xl p-5 md:p-8 text-center anim-pop">
+                        <h2 className="text-3xl font-bold mb-6">{t("quiz.thankYou")}</h2>
 
                         {/* แสดงสถานะ */}
-                        {result.score === 10 ? (
-                            <div className="mb-6 anim-pop" style={{ animationDelay: "0.2s" }}>
+                        <div className="mb-6 anim-pop" style={{ animationDelay: "0.2s" }}>
+                            {result.score === 10 ? (
                                 <div className="inline-flex items-center gap-3 bg-emerald-500/10 text-emerald-400 px-8 py-3 rounded-2xl text-2xl font-bold border border-emerald-400/30 shadow-[0_0_30px_rgba(16,185,129,0.25)]">
-                                    🎉 คุณผ่านแล้ว!
+                                    {t("quiz.passed")}
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="mb-6 anim-pop" style={{ animationDelay: "0.2s" }}>
+                            ) : (
                                 <div className="inline-flex items-center gap-2 bg-red-500/10 text-red-400 px-6 py-2 rounded-2xl text-lg font-bold border border-red-400/30">
-                                    ❌ คุณยังไม่ผ่าน
+                                    {t("quiz.notPassed")}
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
                         <div className="flex justify-center gap-8 mb-8">
                             <div className="anim-pop" style={{ animationDelay: "0.35s" }}>
                                 <div className={`text-6xl font-black ${result.score === 10 ? "text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,0.6)]" : "text-yellow-400"}`}>{result.score}</div>
-                                <div className="text-white/60">คะแนน</div>
+                                <div className="text-white/60">{t("quiz.scoreLabel")}</div>
                             </div>
                             <div className="anim-pop" style={{ animationDelay: "0.5s" }}>
                                 <div className="text-6xl font-black text-white">{result.time}</div>
-                                <div className="text-white/60">วินาที</div>
+                                <div className="text-white/60">{t("quiz.secondsLabel")}</div>
                             </div>
                         </div>
 
-                        {result.score < 10 && (
-                            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl">
-                                <p className="text-red-400 font-medium mb-1">คุณยังไม่ผ่าน</p>
-                                <p className="text-sm text-white/70">กรุณากดปุ่มด้านล่างเพื่อทำแบบทดสอบใหม่</p>
-                            </div>
-                        )}
-
                         <div className="flex flex-col md:flex-row gap-4 justify-center">
-                            <button onClick={resetQuiz} className={`px-8 py-3 rounded-2xl font-medium transition-all hover:scale-105 ${result.score < 10 ? "bg-red-500 hover:bg-red-600 text-white" : "border border-white/30 hover:bg-white/10"}`}>
-                                ทำแบบทดสอบใหม่
+                            <button
+                                onClick={handleRetryQuiz}
+                                disabled={isChecking}
+                                className="px-10 py-4 rounded-2xl font-bold text-lg bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-400 hover:to-blue-400 text-white transition-all hover:scale-105 shadow-[0_0_25px_rgba(59,130,246,0.35)] disabled:opacity-60 disabled:hover:scale-100"
+                            >
+                                {isChecking ? t("quiz.checking") : t("quiz.retryAgain")}
                             </button>
-                            <a href="/" className="px-8 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black font-bold rounded-2xl hover:from-yellow-300 hover:to-amber-400 transition-all hover:scale-105 text-center">
-                                🏆 ดู Leaderboard
-                            </a>
+                            {result.score === 10 && (
+                                <a href="/" className="px-8 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black font-bold rounded-2xl hover:from-yellow-300 hover:to-amber-400 transition-all hover:scale-105 text-center">
+                                    {t("quiz.viewLeaderboard")}
+                                </a>
+                            )}
                         </div>
                     </div>
                 )}
@@ -693,15 +739,15 @@ export default function Quiz() {
             {/* Popup: เคยทำแบบทดสอบผ่านแล้ว */}
             {showAlreadyPassed && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[999] p-4">
-                    <div className="bg-[#1F1F2E] border border-yellow-400/40 rounded-3xl px-8 py-8 text-center w-[320px] anim-pop anim-glow">
+                    <div className="bg-[#1F1F2E] border border-yellow-400/40 rounded-3xl px-8 py-8 text-center w-full max-w-[320px] anim-pop anim-glow">
                         <div className="text-6xl mb-4 anim-bounce inline-block">🏆</div>
-                        <p className="text-xl font-bold mb-2">คุณทำแบบทดสอบผ่านแล้ว</p>
-                        <p className="text-white/70 mb-6">รอลุ้นรางวัล 🎉</p>
+                        <p className="text-xl font-bold mb-2">{t("quiz.alreadyPassedTitle")}</p>
+                        <p className="text-white/70 mb-6">{t("quiz.alreadyPassedBody")}</p>
                         <button
                             onClick={() => setShowAlreadyPassed(false)}
                             className="w-full rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-3 transition-all hover:scale-[1.02]"
                         >
-                            ตกลง
+                            {t("quiz.ok")}
                         </button>
                     </div>
                 </div>
@@ -709,16 +755,16 @@ export default function Quiz() {
 
             {/* Loading Popup */}
             {isLoading && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[999]">
-                    <div className="bg-[#1F1F2E] border border-white/20 rounded-3xl px-8 py-8 text-center w-[280px] anim-pop">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[999] p-4">
+                    <div className="bg-[#1F1F2E] border border-white/20 rounded-3xl px-8 py-8 text-center w-full max-w-[280px] anim-pop">
                         <div className="flex justify-center mb-4">
                             <div className="relative w-12 h-12">
                                 <div className="absolute inset-0 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
                                 <div className="absolute inset-0 flex items-center justify-center">🎁</div>
                             </div>
                         </div>
-                        <p className="text-lg font-medium">กำลังส่งคำตอบ...</p>
-                        <p className="text-sm text-white/60 mt-1">กรุณารอสักครู่</p>
+                        <p className="text-lg font-medium">{t("quiz.submittingTitle")}</p>
+                        <p className="text-sm text-white/60 mt-1">{t("quiz.pleaseWait")}</p>
                     </div>
                 </div>
             )}
