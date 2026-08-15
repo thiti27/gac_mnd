@@ -294,7 +294,7 @@ export default function PodiumLeaderboard() {
                     <div className="min-w-0">
                         <div className={`font-semibold truncate ${!isPass ? "text-white/80" : ""}`}>
                             {player.employeeId}
-                            {isTop10 && <span className="ml-1.5 text-xs">🔥</span>}
+                           
                         </div>
                         <div className="mt-0.5 flex items-center gap-2">
                             <StatusBadge score={player.score} size="sm" />
