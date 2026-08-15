@@ -8,6 +8,8 @@ import Select from "react-select";
 import questions from "../data/questions";
 import confetti from "canvas-confetti";
 import { supabase } from "../lib/supabase";
+
+const COMMENT_MAX_LENGTH = 500;
 // update แบบมีเงื่อนไขระดับ query เดียว (atomic): Postgres จะแก้แถวก็ต่อเมื่อ
 // คะแนนปัจจุบัน "ในฐานข้อมูล ณ ขณะนั้น" ยังไม่ถึง 10 และผลใหม่ดีกว่าจริง ๆ
 // เงื่อนไขถูกประเมิน ณ ตอน execute โดย Postgres เอง ไม่ได้อิงจากค่าที่ฝั่ง client
@@ -323,6 +325,48 @@ export default function Quiz() {
     };
 
     // ===== ขั้นที่ 1: กด "ส่งคำตอบ" → หยุดเวลา + คำนวณคะแนน (ยังไม่ Save) → ไปหน้า Comment =====
+    // บันทึกผลลง Supabase + แสดงหน้าผลลัพธ์ ใช้ร่วมกันทั้งกรณีผ่าน (มี comment)
+    // และไม่ผ่าน (ข้ามหน้า comment ไปเลย ไม่มี comment)
+    const saveResultAndFinish = async (score, timeTaken, commentText) => {
+        setIsLoading(true);
+
+        const attemptData = {
+            employee_id: userInfo.employeeId,
+            score,
+            time: timeTaken,
+            comment: commentText,
+        };
+
+        try {
+            await sendToSupabase(attemptData);
+
+            // ล้าง cache ของหน้า Leaderboard (key ต้องตรงกับ LEADERBOARD_CACHE_KEY ใน src/pages/Home.jsx)
+            // กันไม่ให้กด "ดู Leaderboard" ต่อจากหน้านี้แล้วเจอข้อมูลเก่าที่ยังไม่รวมผลที่เพิ่งส่ง
+            try {
+                sessionStorage.removeItem("leaderboard_cache_v1");
+            } catch {
+                // sessionStorage ใช้งานไม่ได้ (เช่น private mode บางเบราว์เซอร์) → ข้ามเงียบ ๆ ไม่กระทบการบันทึกผล
+            }
+
+            setResult({ score, time: timeTaken });
+            setShowComment(false);
+            setIsSubmitted(true);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+
+            // ยิงพลุเมื่อได้ 10 คะแนน
+            if (score === 10) {
+                setTimeout(() => {
+                    fireConfetti();
+                }, 400);
+            }
+        } catch (error) {
+            console.error("ส่งข้อมูลไป Google Sheet ล้มเหลว:", error);
+            alert(t("quiz.saveFailedAlert"));
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleSubmitQuiz = () => {
         if (!validateAnswers()) return;
 
@@ -339,60 +383,25 @@ export default function Quiz() {
 
         const finalScore = Math.round((score / totalQuestions) * 10);
 
-        // เก็บผลไว้ก่อน ยังไม่แสดง ยังไม่ Save
-        setPendingResult({ score: finalScore, timeTaken });
-        setShowComment(true); // Timer จะหยุดอัตโนมัติจาก useEffect
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        if (finalScore === 10) {
+            // ผ่าน 10/10 → ให้กรอกความคิดเห็นก่อน ยังไม่บันทึก ยังไม่แสดงผล
+            setPendingResult({ score: finalScore, timeTaken });
+            setShowComment(true); // Timer จะหยุดอัตโนมัติจาก useEffect
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        } else {
+            // ยังไม่ผ่าน → ข้ามหน้า comment ไปเลย บันทึกผล+แจ้งผลทันที
+            saveResultAndFinish(finalScore, timeTaken, "");
+        }
     };
 
-    // ===== ขั้นที่ 2: กด "ส่งความคิดเห็นและดูผลคะแนน" → Save Google Sheet ครั้งเดียว → แสดงผล =====
+    // ===== กด "ส่งคำตอบ และดูผลคะแนน" ในหน้า Comment (เฉพาะคนที่ได้ 10/10) =====
     const handleSubmitComment = async () => {
         if (!comment.trim()) {
             setCommentError(t("quiz.commentRequired"));
             return;
         }
         setCommentError("");
-        setIsLoading(true);
-
-        const attemptData = {
-            employee_id: userInfo.employeeId,
-            score: pendingResult.score,
-            time: pendingResult.timeTaken,
-            comment: comment.trim(),
-        };
-
-        try {
-            const resultFromSheet = await sendToSupabase(attemptData);
-
-            // ล้าง cache ของหน้า Leaderboard (key ต้องตรงกับ LEADERBOARD_CACHE_KEY ใน src/pages/Home.jsx)
-            // กันไม่ให้กด "ดู Leaderboard" ต่อจากหน้านี้แล้วเจอข้อมูลเก่าที่ยังไม่รวมผลที่เพิ่งส่ง
-            try {
-                sessionStorage.removeItem("leaderboard_cache_v1");
-            } catch {
-                // sessionStorage ใช้งานไม่ได้ (เช่น private mode บางเบราว์เซอร์) → ข้ามเงียบ ๆ ไม่กระทบการบันทึกผล
-            }
-
-            setResult({
-                score: pendingResult.score,
-                time: pendingResult.timeTaken,
-            });
-
-            setShowComment(false);
-            setIsSubmitted(true);
-            window.scrollTo({ top: 0, behavior: "smooth" });
-
-            // ยิงพลุเมื่อได้ 10 คะแนน
-            if (pendingResult.score === 10) {
-                setTimeout(() => {
-                    fireConfetti();
-                }, 400);
-            }
-        } catch (error) {
-            console.error("ส่งข้อมูลไป Google Sheet ล้มเหลว:", error);
-            alert(t("quiz.saveFailedAlert"));
-        } finally {
-            setIsLoading(false);
-        }
+        await saveResultAndFinish(pendingResult.score, pendingResult.timeTaken, comment.trim());
     };
 
     const resetQuiz = () => {
@@ -605,16 +614,16 @@ export default function Quiz() {
                                                 type="radio"
                                                 checked={answers[q.id] === option.id}
                                                 onChange={() => handleAnswer(q.id, option.id)}
-                                                className="accent-yellow-400"
+                                                className="accent-yellow-400 flex-shrink-0"
                                             />
 
                                             <div className="flex items-center gap-3">
-                                                <span className={`flex items-center justify-center w-8 h-8 rounded-full font-bold transition-all
+                                                <span className={`flex items-center justify-center w-8 h-8 flex-shrink-0 rounded-full font-bold transition-all
                                                     ${answers[q.id] === option.id ? "bg-yellow-400 text-black" : "bg-white/10 text-yellow-300"}`}>
                                                     {t("quiz.choiceLabels")[index]}
                                                 </span>
 
-                                                <span className="text-base leading-relaxed">{option.text[lang]}</span>
+                                                <span className="text-base leading-relaxed tracking-normal">{option.text[lang]}</span>
                                             </div>
                                         </label>
                                     ))}
@@ -648,9 +657,12 @@ export default function Quiz() {
                 {isStarted && !isSubmitted && showComment && (
                     <div className="anim-pop">
                         <div className="bg-white/5 border border-yellow-400/40 rounded-3xl p-6 md:p-10 anim-glow">
-                            <div className="flex items-center gap-4 mb-6">
+                            <div className="flex flex-wrap items-center gap-2 mb-6">
                                 <span className="inline-block text-xs font-semibold text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded-full px-2.5 py-0.5">
                                     {t("quiz.notTimed")}
+                                </span>
+                                <span className="inline-block text-xs font-semibold text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-2.5 py-0.5">
+                                    {t("quiz.anonymousNote")}
                                 </span>
                             </div>
 
@@ -663,11 +675,15 @@ export default function Quiz() {
                                 </h3>
                                 <textarea
                                     value={comment}
-                                    onChange={(e) => { setComment(e.target.value); setCommentError(""); }}
+                                    onChange={(e) => { setComment(e.target.value.slice(0, COMMENT_MAX_LENGTH)); setCommentError(""); }}
                                     placeholder={t("quiz.commentPlaceholder")}
+                                    maxLength={COMMENT_MAX_LENGTH}
                                     className={`w-full h-36 bg-white/10 border rounded-2xl p-4 resize-y leading-relaxed focus:outline-none focus:border-yellow-400 focus:shadow-[0_0_20px_rgba(250,204,21,0.2)] transition-all
                                         ${commentError ? "border-red-500" : "border-white/20"}`}
                                 />
+                                <div className="text-right text-xs text-white/40 mt-1">
+                                    {comment.length}/{COMMENT_MAX_LENGTH}
+                                </div>
                                 {commentError && (
                                     <div className="anim-shake text-red-400 text-sm mt-3 flex items-center gap-1">
                                         ⚠️ {commentError}
@@ -675,18 +691,18 @@ export default function Quiz() {
                                 )}
                             </div>
 
-                            <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="flex flex-col gap-3">
+                                <button onClick={handleSubmitComment} disabled={isLoading}
+                                    className="w-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100 shadow-[0_0_25px_rgba(16,185,129,0.3)]">
+                                    {t("quiz.submitComment")}
+                                </button>
+
                                 <button
                                     onClick={() => setShowComment(false)}
                                     disabled={isLoading}
-                                    className="sm:flex-shrink-0 px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
+                                    className="w-full px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
                                 >
                                     {t("quiz.backToEditAnswers")}
-                                </button>
-
-                                <button onClick={handleSubmitComment} disabled={isLoading}
-                                    className="sm:flex-1 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100 shadow-[0_0_25px_rgba(16,185,129,0.3)]">
-                                    {t("quiz.submitComment")}
                                 </button>
                             </div>
                         </div>
