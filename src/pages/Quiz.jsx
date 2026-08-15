@@ -637,17 +637,17 @@ export default function Quiz() {
                             </div>
                         )}
 
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            <button
-                                onClick={handleBackToEmployeeId}
-                                className="sm:flex-shrink-0 px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02]"
-                            >
-                                {t("quiz.backToEmployeeId")}
+                        <div className="flex flex-col gap-3">
+                            <button onClick={handleSubmitQuiz}
+                                className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] shadow-[0_0_25px_rgba(16,185,129,0.3)]">
+                                {t("quiz.next")}
                             </button>
 
-                            <button onClick={handleSubmitQuiz}
-                                className="sm:flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] shadow-[0_0_25px_rgba(16,185,129,0.3)]">
-                                {t("quiz.next")}
+                            <button
+                                onClick={handleBackToEmployeeId}
+                                className="w-full px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02]"
+                            >
+                                {t("quiz.backToEmployeeId")}
                             </button>
                         </div>
                     </div>
@@ -657,7 +657,7 @@ export default function Quiz() {
                 {isStarted && !isSubmitted && showComment && (
                     <div className="anim-pop">
                         <div className="bg-white/5 border border-yellow-400/40 rounded-3xl p-6 md:p-10 anim-glow">
-                            <div className="flex flex-wrap items-center gap-2 mb-6">
+                            <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
                                 <span className="inline-block text-xs font-semibold text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded-full px-2.5 py-0.5">
                                     {t("quiz.notTimed")}
                                 </span>
