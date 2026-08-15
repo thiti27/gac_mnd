@@ -158,13 +158,16 @@ export default function Quiz() {
                 "not-blank",
                 t("quiz.employeeIdRequired"),
                 (value) => !!value && value.trim().length > 0
-            ),
+            )
+            .matches(/^[A-Z0-9]+$/, t("quiz.employeeIdInvalidChars"))
+            .min(5, t("quiz.employeeIdMinLength")),
     });
 
     // เติมรหัสพนักงานให้อัตโนมัติจาก: 1) เคยกรอกไปแล้วในรอบนี้ (เช่นกด "ทำแบบทดสอบใหม่")
     // หรือ 2) มาจากลิงก์ที่แนบ ?employeeId=... มา (เช่นคลิกการ์ด Not Pass ใน Leaderboard)
     // ไม่ว่าจะทางไหนก็แค่ "เติมให้" เท่านั้น ผู้ใช้ยังต้องกดเริ่มทำแบบทดสอบเอง
-    const prefillEmployeeId = (searchParams.get("employeeId") || "").trim().toUpperCase();
+    // กรองเฉพาะ A-Z0-9 ด้วย เผื่อมีคนแต่ง URL ?employeeId=... ส่งอักขระแปลกมา
+    const prefillEmployeeId = (searchParams.get("employeeId") || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     const initialUserInfo = {
         employeeId: userInfo?.employeeId ?? prefillEmployeeId,
         fullName: "",
@@ -526,9 +529,9 @@ export default function Quiz() {
                                                 placeholder={t("quiz.employeeIdPlaceholder")}
                                                 autoFocus
                                                 onChange={(e) => {
-                                                    // พิมพ์ตัวเล็กแปลงเป็นตัวใหญ่ + ตัดช่องว่างทั้งหมดออกอัตโนมัติ
-                                                    // ระหว่างพิมพ์ ป้องกันปัญหาตัวพิมพ์/whitespace ตั้งแต่ต้นทาง
-                                                    const cleaned = e.target.value.toUpperCase().replace(/\s+/g, "");
+                                                    // พิมพ์ตัวเล็กแปลงเป็นตัวใหญ่ + ตัดช่องว่าง/อักขระที่ไม่ใช่ A-Z0-9 ออกอัตโนมัติ
+                                                    // ระหว่างพิมพ์ ป้องกันปัญหาตัวพิมพ์/whitespace/อักขระแปลกตั้งแต่ต้นทาง
+                                                    const cleaned = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
                                                     form.setFieldValue("employeeId", cleaned);
                                                 }}
                                                 className={`w-full rounded-2xl bg-white/10 border-2 px-4 py-5 text-center text-2xl md:text-3xl font-black tracking-widest text-yellow-300 placeholder:text-white/20 placeholder:font-normal placeholder:tracking-normal placeholder:text-base transition-all focus:outline-none focus:ring-4 focus:ring-yellow-400/20 focus:border-yellow-400 ${errors.employeeId && touched.employeeId
