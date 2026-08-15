@@ -575,9 +575,11 @@ export default function Quiz() {
                         {/* คำถาม (เฉพาะข้อสอบ ไม่รวม Comment) */}
                         {quizQuestions.map((q, index) => (
                             <div key={q.id} ref={el => questionRefs.current[q.id] = el}
-                                className={`scroll-mt-4 bg-white/5 border rounded-3xl overflow-hidden transition-all duration-300 anim-fade-up
+                                className={`scroll-mt-4 bg-white/5 border rounded-3xl overflow-hidden transition-all duration-300 anim-fade-up select-none
                                     ${answers[q.id] ? "border-emerald-400/40 shadow-[0_0_15px_rgba(16,185,129,0.1)]" : "border-white/10"}`}
-                                style={{ animationDelay: `${Math.min(index * 0.05, 0.4)}s` }}>
+                                style={{ animationDelay: `${Math.min(index * 0.05, 0.4)}s` }}
+                                onCopy={(e) => e.preventDefault()}
+                                onContextMenu={(e) => e.preventDefault()}>
 
                                 {/* โซนคำถาม — แยกพื้นหลังเข้มกว่าตัวเลือกด้านล่างชัดเจน */}
                                 <div className="flex gap-3 items-start bg-black/20 px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
@@ -626,16 +628,16 @@ export default function Quiz() {
                             </div>
                         )}
 
-                        <div className="flex gap-3">
+                        <div className="flex flex-col sm:flex-row gap-3">
                             <button
                                 onClick={handleBackToEmployeeId}
-                                className="flex-shrink-0 px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02]"
+                                className="sm:flex-shrink-0 px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02]"
                             >
                                 {t("quiz.backToEmployeeId")}
                             </button>
 
                             <button onClick={handleSubmitQuiz}
-                                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] shadow-[0_0_25px_rgba(16,185,129,0.3)]">
+                                className="sm:flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] shadow-[0_0_25px_rgba(16,185,129,0.3)]">
                                 {t("quiz.next")}
                             </button>
                         </div>
@@ -653,7 +655,9 @@ export default function Quiz() {
                             </div>
 
                             <div className="bg-white/5 border border-white/10 rounded-2xl p-5 md:p-6 mb-6">
-                                <h3 className="font-semibold text-base md:text-lg mb-4 flex gap-2 leading-relaxed">
+                                <h3 className="font-semibold text-base md:text-lg mb-4 flex gap-2 leading-relaxed select-none"
+                                    onCopy={(e) => e.preventDefault()}
+                                    onContextMenu={(e) => e.preventDefault()}>
                                     <span className="text-yellow-400 flex-shrink-0">Q:</span>
                                     <span>{t("quiz.commentQuestion")}</span>
                                 </h3>
@@ -671,17 +675,17 @@ export default function Quiz() {
                                 )}
                             </div>
 
-                            <div className="flex gap-3">
+                            <div className="flex flex-col sm:flex-row gap-3">
                                 <button
                                     onClick={() => setShowComment(false)}
                                     disabled={isLoading}
-                                    className="flex-shrink-0 px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
+                                    className="sm:flex-shrink-0 px-5 py-4 rounded-2xl font-medium border border-white/30 hover:bg-white/10 transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
                                 >
                                     {t("quiz.backToEditAnswers")}
                                 </button>
 
                                 <button onClick={handleSubmitComment} disabled={isLoading}
-                                    className="flex-1 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100 shadow-[0_0_25px_rgba(250,204,21,0.3)]">
+                                    className="sm:flex-1 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-white font-bold py-4 rounded-2xl text-lg transition-all hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100 shadow-[0_0_25px_rgba(16,185,129,0.3)]">
                                     {t("quiz.submitComment")}
                                 </button>
                             </div>

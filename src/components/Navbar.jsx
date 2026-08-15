@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, useLocation } from "react-router-dom";
-import { Trophy, ClipboardList, FileSpreadsheet, Menu, X, Languages } from "lucide-react";
+import { Trophy, ClipboardList, Menu, X, Languages } from "lucide-react";
 import { useQuizProgress } from "../context/QuizProgressContext";
 import { useLanguage } from "../context/LanguageContext";
 import logo from "../../public/logo.png"; // ปรับ path ตามจริง
@@ -139,14 +139,15 @@ export default function Navbar() {
                             {t("nav.quiz")}
                         </NavLink>
 
-                        <NavLink
+                        {/* ซ่อน Report จากเมนู (ยังเข้าตรง /report ได้ผ่าน URL ตามปกติ มีรหัสผ่านกันชั้นหนึ่งอยู่แล้วในหน้า Report เอง) */}
+                        {/* <NavLink
                             to="/report"
                             className={navLinkClass}
                             onClick={() => setIsOpen(false)}
                         >
                             <FileSpreadsheet size={18} />
                             {t("nav.report")}
-                        </NavLink>
+                        </NavLink> */}
                     </div>
                 </div>
             )}
